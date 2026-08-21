@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agenda Wilcoa</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<style>
+  html, body { margin:0; padding:0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useMemo } = React;
+
+/* ============ ICONOS (SVG propios, reemplazan lucide-react) ============ */
+const ICONS = {
+  Calendar: () => <>
+    <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+    <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+  </>,
+  Plus: () => <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,
+  X: () => <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
+  Check: () => <polyline points="20 6 9 17 4 12"/>,
+  Edit2: () => <><path d="M3 21l3-1 11-11-2-2L4 18z"/><line x1="14" y1="5" x2="18" y2="9"/></>,
+  Trash2: () => <>
+    <polyline points="3 6 5 6 21 6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+  </>,
+  Search: () => <><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>,
+  ChevronLeft: () => <polyline points="15 18 9 12 15 6"/>,
+  ChevronRight: () => <polyline points="9 18 15 12 9 6"/>,
+  ChevronDown: () => <polyline points="6 9 12 15 18 9"/>,
+  DollarSign: () => <><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></>,
+  Phone: () => <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>,
+  User: () => <><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></>,
+  Upload: () => <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>,
+  LayoutGrid: () => <><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></>,
+  List: () => <><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></>,
+  TrendingUp: () => <><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></>,
+  Package: () => <><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></>,
+  Sparkles: () => <><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M19 16l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7z"/></>,
+  Building2: () => <><rect x="4" y="2" width="16" height="20" rx="1"/><line x1="9" y1="6" x2="9" y2="6.01"/><line x1="15" y1="6" x2="15" y2="6.01"/><line x1="9" y1="10" x2="9" y2="10.01"/><line x1="15" y1="10" x2="15" y2="10.01"/><line x1="9" y1="14" x2="9" y2="14.01"/><line x1="15" y1="14" x2="15" y2="14.01"/><line x1="9" y1="22" x2="9" y2="18"/><line x1="15" y1="22" x2="15" y2="18"/></>,
+  CheckCircle2: () => <><circle cx="12" cy="12" r="10"/><polyline points="9 12 12 15 16 10"/></>,
+  Clock: () => <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16.5 14.5"/></>,
+  AlertCircle: () => <><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></>,
+  Armchair: () => <><rect x="4" y="9" width="4" height="7" rx="1"/><rect x="16" y="9" width="4" height="7" rx="1"/><rect x="5" y="10" width="14" height="7" rx="2"/><line x1="6" y1="17" x2="6" y2="21"/><line x1="18" y1="17" x2="18" y2="21"/></>,
+  Table2: () => <><rect x="3" y="4" width="18" height="3" rx="1"/><line x1="6" y1="7" x2="6" y2="20"/><line x1="18" y1="7" x2="18" y2="20"/></>,
+  Layers: () => <><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></>,
+  Volume2: () => <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></>,
+  StickyNote: () => <><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3z"/><polyline points="15 3 15 9 21 9"/></>,
+  Save: () => <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>,
+  RefreshCw: () => <><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></>,
+  QrCode: () => <><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><line x1="19" y1="14" x2="21" y2="14"/><line x1="14" y1="19" x2="14" y2="21"/><line x1="19" y1="19" x2="21" y2="21"/><line x1="21" y1="19" x2="19" y2="21"/></>,
+  Copy: () => <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
+  Share2: () => <><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></>,
+};
+function Icon({ name, size = 16, color = 'currentColor', style }) {
+  const shape = ICONS[name];
+  if (!shape) return null;
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
+      {shape()}
+    </svg>
+  );
+}
+
+/* ============ CONFIG Y DATOS BASE ============ */
+const STORAGE_KEY = 'wilcoa:data';
+const SESSION_KEY = 'wilcoa:mySession';
+const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const DAYS_SHORT = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+
+const defaultConfig = { hallName: 'Salón Comunal La Floresta', logoDataUrl: null, publishedUrl: '', adminCode: 'WILCOA-ADMIN-2026', editorCode: 'WILCOA-EDITOR-2026' };
+const emptyExtras = { mesas: 0, sillas: 0, manteles: 0, sobremanteles: 0, sonido: false, otros: '' };
+const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: '', isExempt: false, exemptReason: '', exemptRefValue: '', extras: { ...emptyExtras }, notes: '' };
+
+function paymentStatus(r) {
+  if (r.isExempt) return 'exonerado';
+  const total = Number(r.totalAmount) || 0;
+  const paid = Number(r.paidAmount) || 0;
+  if (total > 0 && paid >= total) return 'pagado';
+  if (paid > 0) return 'abono';
+  return 'debe';
+}
+const STATUS_COLORS = { debe: '#E23B3B', abono: '#F2B705', pagado: '#1B8A3E', exonerado: '#7B4FE0' };
+const STATUS_LABELS = { debe: 'Debe todo', abono: 'Abonó', pagado: 'Pagado', exonerado: 'Uso social (exonerado)' };
+const STATUS_RANK = { debe: 0, abono: 1, pagado: 2, exonerado: 3 };
+
+/* ============ ROLES Y PERMISOS ============ */
+const ROLES = { VIEWER: 'viewer', EDITOR: 'editor', ADMIN: 'admin' };
+const ROLE_LABELS = { viewer: 'Solo consulta', editor: 'Editor de reservas', admin: 'Administrador' };
+function canCreateEdit(role) { return role === ROLES.EDITOR || role === ROLES.ADMIN; }
+function canDelete(role) { return role === ROLES.ADMIN; }
+function canManageConfig(role) { return role === ROLES.ADMIN; }
+
+function uid() {
+  return 'r_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+function fmtMoney(n) {
+  const v = Number(n) || 0;
+  return '₡' + v.toLocaleString('es-CR', { maximumFractionDigits: 0 });
+}
+function toDateKey(y, m, d) {
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+function parseDateKey(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function fmtDateHuman(key) {
+  if (!key) return '';
+  const d = parseDateKey(key);
+  return d.toLocaleDateString('es-CR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+function resizeImage(file, maxDim = 320) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxDim) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+        else if (height > maxDim) { width = Math.round(width * (maxDim / height)); height = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/png', 0.9));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ============ APP PRINCIPAL ============ */
+function AgendaWilcoa() {
+  const [config, setConfig] = useState(defaultConfig);
+  const [reservations, setReservations] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState('calendar');
+  const [cursor, setCursor] = useState(() => { const n = new Date(); return { y: n.getFullYear(), m: n.getMonth() }; });
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const [urlDraft, setUrlDraft] = useState('');
+  const [formData, setFormData] = useState(emptyRes);
+  const [editingHallName, setEditingHallName] = useState(false);
+  const [hallNameDraft, setHallNameDraft] = useState('');
+  const [query, setQuery] = useState('');
+  const [toast, setToast] = useState(null);
+  const fileInputRef = useRef(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastSync, setLastSync] = useState(null);
+  const [role, setRole] = useState(ROLES.VIEWER);
+  const [showLogin, setShowLogin] = useState(false);
+  const [showAccessManager, setShowAccessManager] = useState(false);
+
+  const loadFromStorage = async (silent) => {
+    if (!silent) setRefreshing(true);
+    try {
+      const res = await window.storage.get(STORAGE_KEY, true);
+      if (res && res.value) {
+        const parsed = JSON.parse(res.value);
+        setConfig({ ...defaultConfig, ...(parsed.config || {}) });
+        setReservations(Array.isArray(parsed.reservations) ? parsed.reservations : []);
+      }
+      setLastSync(new Date());
+    } catch (e) {
+      // aún no hay datos guardados, se mantienen los valores por defecto
+    } finally {
+      setRefreshing(false);
+      setLoaded(true);
+    }
+  };
+
+  useEffect(() => { loadFromStorage(true); }, []);
+
+  // Recuerda el rol de esta persona en este dispositivo (almacenamiento personal, no compartido),
+  // así no tiene que volver a escribir su código cada vez que abre el link.
+  useEffect(() => {
+    if (!loaded) return;
+    (async () => {
+      try {
+        const res = await window.storage.get(SESSION_KEY, false);
+        if (res && res.value) {
+          const sess = JSON.parse(res.value);
+          if (sess.role === ROLES.ADMIN && sess.code && sess.code === config.adminCode) setRole(ROLES.ADMIN);
+          else if (sess.role === ROLES.EDITOR && sess.code && sess.code === config.editorCode) setRole(ROLES.EDITOR);
+        }
+      } catch (e) {
+        // no hay sesión guardada en este dispositivo todavía
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!showForm && !editingHallName) loadFromStorage(true);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [showForm, editingHallName]);
+
+  const persist = async (nextConfig, nextRes) => {
+    setSaving(true);
+    try {
+      await window.storage.set(STORAGE_KEY, JSON.stringify({ config: nextConfig, reservations: nextRes }), true);
+      return true;
+    } catch (e) {
+      showToast('No se pudo guardar. Revisa tu conexión e intenta de nuevo sin cerrar la app.', 'error');
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Avisa al navegador que no cierre/recargue la pestaña mientras hay un guardado en curso,
+  // para evitar que una reserva recién tipeada se pierda por cerrar demasiado rápido.
+  useEffect(() => {
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; return ''; };
+    if (saving) window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [saving]);
+
+  const showToast = (msg, kind = 'ok') => {
+    setToast({ msg, kind });
+    setTimeout(() => setToast(null), 2600);
+  };
+
+  const updateConfig = async (patch) => {
+    const next = { ...config, ...patch };
+    const ok = await persist(next, reservations);
+    if (ok) setConfig(next);
+    return ok;
+  };
+
+  const saveReservation = async (data) => {
+    let next;
+    if (data.id) {
+      next = reservations.map(r => r.id === data.id ? data : r);
+    } else {
+      next = [...reservations, { ...data, id: uid() }];
+    }
+    next.sort((a, b) => a.date.localeCompare(b.date));
+    const ok = await persist(config, next);
+    if (ok) {
+      setReservations(next);
+      showToast(data.id ? 'Reserva actualizada' : 'Reserva agregada');
+    }
+    return ok;
+  };
+
+  const deleteReservation = async (id) => {
+    if (!canDelete(role)) return false;
+    const next = reservations.filter(r => r.id !== id);
+    const ok = await persist(config, next);
+    if (ok) {
+      setReservations(next);
+      showToast('Reserva eliminada', 'ok');
+    }
+    return ok;
+  };
+
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await resizeImage(file, 320);
+      updateConfig({ logoDataUrl: dataUrl });
+      showToast('Logo actualizado');
+    } catch {
+      showToast('No se pudo cargar la imagen', 'error');
+    }
+    e.target.value = '';
+  };
+
+  const resByDate = useMemo(() => {
+    const map = {};
+    reservations.forEach(r => { (map[r.date] = map[r.date] || []).push(r); });
+    return map;
+  }, [reservations]);
+
+  const monthGrid = useMemo(() => {
+    const { y, m } = cursor;
+    const first = new Date(y, m, 1);
+    const startWeekday = first.getDay();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < startWeekday; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  }, [cursor]);
+
+  const filteredReservations = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    let list = [...reservations];
+    if (q) list = list.filter(r => r.clientName.toLowerCase().includes(q) || r.date.includes(q) || (r.phone || '').includes(q));
+    return list.sort((a, b) => a.date.localeCompare(b.date));
+  }, [reservations, query]);
+
+  const stats = useMemo(() => {
+    const now = new Date();
+    const upcoming = reservations.filter(r => parseDateKey(r.date) >= new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+    const paidReservations = reservations.filter(r => !r.isExempt);
+    const exemptReservations = reservations.filter(r => r.isExempt);
+    const totalIncomeExpected = paidReservations.reduce((s, r) => s + (Number(r.totalAmount) || 0), 0);
+    const totalPaid = paidReservations.reduce((s, r) => s + (Number(r.paidAmount) || 0), 0);
+    const pending = totalIncomeExpected - totalPaid;
+    const fullyPaidCount = paidReservations.filter(r => (Number(r.paidAmount) || 0) >= (Number(r.totalAmount) || 0) && Number(r.totalAmount) > 0).length;
+    const exemptCount = exemptReservations.length;
+    const exemptRefTotal = exemptReservations.reduce((s, r) => s + (Number(r.exemptRefValue) || 0), 0);
+    return { total: reservations.length, upcoming: upcoming.length, totalIncomeExpected, totalPaid, pending, fullyPaidCount, exemptCount, exemptRefTotal };
+  }, [reservations]);
+
+  const openNewForm = (dateKey) => {
+    if (!canCreateEdit(role)) return;
+    setFormData({ ...emptyRes, id: null, date: dateKey || selectedDate || toDateKey(cursor.y, cursor.m, new Date().getDate()), extras: { ...emptyExtras } });
+    setShowForm(true);
+  };
+  const openEditForm = (r) => {
+    if (!canCreateEdit(role)) return;
+    setFormData({ ...emptyRes, ...r, extras: { ...emptyExtras, ...r.extras } });
+    setShowForm(true);
+  };
+
+  if (!loaded) {
+    return (
+      <div style={{ ...styles.app, alignItems: 'center', justifyContent: 'center', display: 'flex' }}>
+        <div style={{ color: '#fff', fontFamily: 'Inter, sans-serif', fontSize: 15, opacity: 0.85 }}>Cargando Agenda Wilcoa…</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.app}>
+      <style>{fontImport}</style>
+      <div style={styles.bgGlowA} />
+      <div style={styles.bgGlowB} />
+
+      <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoUpload} />
+
+      <header style={styles.header}>
+        <div style={styles.headerLeft}>
+          <div
+            style={styles.logoWrap}
+            onClick={() => { if (canManageConfig(role)) fileInputRef.current?.click(); }}
+            title={canManageConfig(role) ? 'Cambiar logo' : ''}
+          >
+            {config.logoDataUrl ? (
+              <img src={config.logoDataUrl} alt="logo" style={styles.logoImg} />
+            ) : (
+              <Icon name="Building2" size={28} color="#0B1F5C" />
+            )}
+            {canManageConfig(role) && (
+              <div style={styles.logoEditBadge}><Icon name="Upload" size={11} color="#fff" /></div>
+            )}
+          </div>
+          <div>
+            <div style={styles.brandRow}>
+              <Icon name="Sparkles" size={14} color="#47C3EF" />
+              <span style={styles.brandLabel}>AGENDA WILCOA</span>
+            </div>
+            {editingHallName ? (
+              <input
+                autoFocus
+                value={hallNameDraft}
+                onChange={e => setHallNameDraft(e.target.value)}
+                onBlur={() => { updateConfig({ hallName: hallNameDraft.trim() || config.hallName }); setEditingHallName(false); }}
+                onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                style={styles.hallNameInput}
+              />
+            ) : (
+              <h1
+                style={styles.hallName}
+                onClick={() => { if (canManageConfig(role)) { setHallNameDraft(config.hallName); setEditingHallName(true); } }}
+                title={canManageConfig(role) ? 'Editar nombre del salón' : ''}
+              >
+                {config.hallName}
+                {canManageConfig(role) && <Icon name="Edit2" size={13} style={{ marginLeft: 8, opacity: 0.5 }} color="#fff" />}
+              </h1>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            style={{ ...styles.accessBadge, ...(role === ROLES.ADMIN ? styles.accessBadgeAdmin : role === ROLES.EDITOR ? styles.accessBadgeEditor : {}) }}
+            onClick={() => { if (role === ROLES.VIEWER) setShowLogin(true); }}
+            title={role === ROLES.VIEWER ? 'Iniciar sesión con código de acceso' : 'Sesión activa'}
+          >
+            <Icon name="User" size={13} color="#fff" /> {ROLE_LABELS[role]}
+          </button>
+          {role !== ROLES.VIEWER && (
+            <button
+              style={styles.logoutBtn}
+              onClick={async () => {
+                setRole(ROLES.VIEWER);
+                try { await window.storage.delete(SESSION_KEY, false); } catch (e) { /* no había sesión guardada */ }
+              }}
+            >
+              Cerrar sesión
+            </button>
+          )}
+          {canManageConfig(role) && (
+            <button style={styles.shareBtn} onClick={() => setShowAccessManager(true)}>
+              <Icon name="Edit2" size={14} color="#fff" /> Códigos de acceso
+            </button>
+          )}
+          {canManageConfig(role) && (
+            <button style={styles.shareBtn} onClick={() => { setUrlDraft(config.publishedUrl || ''); setShowShare(true); }}>
+              <Icon name="Share2" size={16} color="#fff" /> Compartir
+            </button>
+          )}
+          {canCreateEdit(role) && (
+            <button style={styles.newBtn} onClick={() => openNewForm(null)}>
+              <Icon name="Plus" size={17} color="#fff" /> Nueva reserva
+            </button>
+          )}
+        </div>
+      </header>
+
+      <nav style={styles.tabs}>
+        {[
+          { id: 'calendar', label: 'Calendario', icon: 'LayoutGrid' },
+          { id: 'list', label: 'Reservas', icon: 'List' },
+          { id: 'stats', label: 'Resumen', icon: 'TrendingUp' },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ ...styles.tabBtn, ...(tab === t.id ? styles.tabBtnActive : {}) }}>
+            <Icon name={t.icon} size={15} color={tab === t.id ? '#0B1F5C' : 'rgba(255,255,255,0.7)'} /> {t.label}
+          </button>
+        ))}
+        {saving && <span style={styles.savingTag}>Guardando…</span>}
+        <button
+          style={styles.refreshBtn}
+          onClick={() => loadFromStorage(false)}
+          disabled={refreshing}
+          title="Buscar reservas nuevas hechas desde otro celular o computadora"
+        >
+          <Icon name="RefreshCw" size={14} color="rgba(255,255,255,0.85)" style={refreshing ? { animation: 'wilcoa-spin 0.8s linear infinite' } : {}} />
+          {refreshing ? 'Actualizando…' : 'Actualizar'}
+        </button>
+      </nav>
+
+      <main style={styles.main}>
+        {tab === 'calendar' && (
+          <div className="wilcoa-cal-layout" style={styles.calendarLayout}>
+            <div style={styles.calCard}>
+              <div style={styles.calHeader}>
+                <button style={styles.navBtn} onClick={() => setCursor(c => { const m = c.m - 1; return m < 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m }; })}><Icon name="ChevronLeft" size={18} color="#0B1F5C" /></button>
+                <div style={styles.calTitle}>{MONTHS[cursor.m]} {cursor.y}</div>
+                <button style={styles.navBtn} onClick={() => setCursor(c => { const m = c.m + 1; return m > 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m }; })}><Icon name="ChevronRight" size={18} color="#0B1F5C" /></button>
+              </div>
+              <div style={styles.weekRow}>
+                {DAYS_SHORT.map(d => <div key={d} style={styles.weekDay}>{d}</div>)}
+              </div>
+              <div style={styles.grid}>
+                {monthGrid.map((d, i) => {
+                  if (d === null) return <div key={i} style={styles.cellEmpty} />;
+                  const key = toDateKey(cursor.y, cursor.m, d);
+                  const dayRes = resByDate[key] || [];
+                  const isSelected = selectedDate === key;
+                  const today = new Date();
+                  const isToday = today.getFullYear() === cursor.y && today.getMonth() === cursor.m && today.getDate() === d;
+                  const hasBooking = dayRes.length > 0;
+                  const worstStatus = hasBooking
+                    ? dayRes.map(paymentStatus).sort((a, b) => STATUS_RANK[a] - STATUS_RANK[b])[0]
+                    : null;
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => setSelectedDate(key)}
+                      style={{
+                        ...styles.cell,
+                        ...(isSelected ? styles.cellSelected : {}),
+                        ...(isToday && !isSelected ? styles.cellToday : {}),
+                      }}
+                    >
+                      <span style={{ ...styles.cellNum, ...(isSelected ? { color: '#fff' } : {}) }}>{d}</span>
+                      {hasBooking && (
+                        <span style={{ ...styles.dot, background: STATUS_COLORS[worstStatus] }} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={styles.legendRow}>
+                <span style={styles.legendItem}><span style={{ ...styles.dot, background: STATUS_COLORS.debe, position: 'static' }} /> Debe todo</span>
+                <span style={styles.legendItem}><span style={{ ...styles.dot, background: STATUS_COLORS.abono, position: 'static' }} /> Abonó</span>
+                <span style={styles.legendItem}><span style={{ ...styles.dot, background: STATUS_COLORS.pagado, position: 'static' }} /> Pagado</span>
+                <span style={styles.legendItem}><span style={{ ...styles.dot, background: STATUS_COLORS.exonerado, position: 'static' }} /> Exonerado</span>
+              </div>
+            </div>
+
+            <div style={styles.dayPanel}>
+              {selectedDate ? (
+                <>
+                  <div style={styles.dayPanelHeader}>
+                    <div>
+                      <div style={styles.dayPanelDate}>{fmtDateHuman(selectedDate)}</div>
+                    </div>
+                    {canCreateEdit(role) && (
+                      <button style={styles.smallAddBtn} onClick={() => openNewForm(selectedDate)}><Icon name="Plus" size={14} color="#fff" /> Reservar</button>
+                    )}
+                  </div>
+                  {(resByDate[selectedDate] || []).length === 0 ? (
+                    <div style={styles.emptyDay}>
+                      <Icon name="Calendar" size={26} color="#8FA3C9" />
+                      <p style={styles.emptyDayText}>Fecha libre. Aún no hay reservas para este día.</p>
+                    </div>
+                  ) : (
+                    <div style={styles.resStack}>
+                      {(resByDate[selectedDate] || []).map(r => (
+                        <ReservationCard key={r.id} r={r} onEdit={() => openEditForm(r)} onDelete={() => deleteReservation(r.id)} defaultOpen role={role} />
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={styles.emptyDay}>
+                  <Icon name="Calendar" size={26} color="#8FA3C9" />
+                  <p style={styles.emptyDayText}>Selecciona un día del calendario para ver o crear una reserva.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {tab === 'list' && (
+          <div style={styles.listWrap}>
+            <div style={styles.searchBar}>
+              <Icon name="Search" size={16} color="#8FA3C9" />
+              <input
+                placeholder="Buscar por cliente, teléfono o fecha (AAAA-MM-DD)…"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                style={styles.searchInput}
+              />
+            </div>
+            {filteredReservations.length === 0 ? (
+              <div style={styles.emptyDay}>
+                <Icon name="Package" size={26} color="#8FA3C9" />
+                <p style={styles.emptyDayText}>No hay reservas todavía. Crea la primera con "Nueva reserva".</p>
+              </div>
+            ) : (
+              <div style={styles.resStack}>
+                {filteredReservations.map(r => (
+                  <ReservationCard key={r.id} r={r} onEdit={() => openEditForm(r)} onDelete={() => deleteReservation(r.id)} showDate role={role} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'stats' && (
+          <div className="wilcoa-stats-grid" style={styles.statsGrid}>
+            <StatCard icon="Calendar" label="Reservas totales" value={stats.total} color="#0B1F5C" />
+            <StatCard icon="Clock" label="Próximas reservas" value={stats.upcoming} color="#47C3EF" />
+            <StatCard icon="CheckCircle2" label="Totalmente pagadas" value={stats.fullyPaidCount} color="#1B8A3E" />
+            <StatCard icon="DollarSign" label="Ingreso esperado" value={fmtMoney(stats.totalIncomeExpected)} color="#0B1F5C" wide />
+            <StatCard icon="TrendingUp" label="Total abonado" value={fmtMoney(stats.totalPaid)} color="#1B8A3E" wide />
+            <StatCard icon="AlertCircle" label="Saldo pendiente" value={fmtMoney(stats.pending)} color="#FF6B4A" wide />
+            <StatCard icon="Sparkles" label="Actividades exoneradas" value={stats.exemptCount} color="#7B4FE0" />
+            <StatCard icon="DollarSign" label="Valor donado (referencial, no es ingreso)" value={fmtMoney(stats.exemptRefTotal)} color="#7B4FE0" wide />
+          </div>
+        )}
+      </main>
+
+      {showForm && (
+        <ReservationForm
+          data={formData}
+          saving={saving}
+          onCancel={() => setShowForm(false)}
+          onSave={async (d) => { const ok = await saveReservation(d); if (ok) setShowForm(false); }}
+        />
+      )}
+
+      {showShare && (
+        <ShareModal
+          urlDraft={urlDraft}
+          setUrlDraft={setUrlDraft}
+          onClose={() => setShowShare(false)}
+          onSaveUrl={() => { updateConfig({ publishedUrl: urlDraft.trim() }); showToast('Link guardado'); }}
+          hallName={config.hallName}
+        />
+      )}
+
+      {showLogin && (
+        <LoginModal
+          config={config}
+          onClose={() => setShowLogin(false)}
+          onLogin={async (r, code) => {
+            setRole(r);
+            setShowLogin(false);
+            try { await window.storage.set(SESSION_KEY, JSON.stringify({ role: r, code }), false); } catch (e) { /* no se pudo recordar en este dispositivo, no es grave */ }
+            showToast(r === ROLES.ADMIN ? 'Sesión de administrador iniciada' : 'Sesión de editor iniciada');
+          }}
+        />
+      )}
+
+      {showAccessManager && canManageConfig(role) && (
+        <AccessManagerModal
+          config={config}
+          onClose={() => setShowAccessManager(false)}
+          onSave={async (adminCode, editorCode) => {
+            const ok = await updateConfig({ adminCode, editorCode });
+            if (ok) {
+              setShowAccessManager(false);
+              showToast('Códigos actualizados');
+              // Actualiza la sesión de este dispositivo con el código nuevo para no cerrar tu propia sesión
+              const myNewCode = role === ROLES.ADMIN ? adminCode : role === ROLES.EDITOR ? editorCode : null;
+              if (myNewCode) {
+                try { await window.storage.set(SESSION_KEY, JSON.stringify({ role, code: myNewCode }), false); } catch (e) {}
+              }
+            }
+          }}
+        />
+      )}
+
+      {toast && (
+        <div style={{ ...styles.toast, ...(toast.kind === 'error' ? styles.toastError : {}) }}>
+          {toast.kind === 'error' ? <Icon name="AlertCircle" size={16} color="#fff" /> : <Icon name="Check" size={16} color="#fff" />} {toast.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReservationCard({ r, onEdit, onDelete, showDate, defaultOpen, role }) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  const total = Number(r.totalAmount) || 0;
+  const paid = Number(r.paidAmount) || 0;
+  const deposit = Number(r.depositAmount) || 0;
+  const status = paymentStatus(r);
+  const canEditCard = canCreateEdit(role);
+  const canRemoveCard = canDelete(role);
+  const timeRange = r.startTime && r.endTime ? `${r.startTime} – ${r.endTime}` : (r.startTime || r.endTime || '');
+  const extrasList = [];
+  if (r.extras?.mesas > 0) extrasList.push({ icon: 'Table2', label: `${r.extras.mesas} mesas` });
+  if (r.extras?.sillas > 0) extrasList.push({ icon: 'Armchair', label: `${r.extras.sillas} sillas` });
+  if (r.extras?.manteles > 0) extrasList.push({ icon: 'Layers', label: `${r.extras.manteles} manteles` });
+  if (r.extras?.sobremanteles > 0) extrasList.push({ icon: 'Layers', label: `${r.extras.sobremanteles} sobremanteles` });
+  if (r.extras?.sonido) extrasList.push({ icon: 'Volume2', label: 'Equipo de sonido' });
+  if (r.extras?.otros) extrasList.push({ icon: 'Package', label: r.extras.otros });
+
+  return (
+    <div style={styles.resCard}>
+      <div style={styles.resCardTop} onClick={() => setOpen(o => !o)} role="button">
+        <div style={{ minWidth: 0 }}>
+          <div style={styles.resClient}><Icon name="User" size={14} color="#0B1F5C" /> {r.clientName || 'Sin nombre'}</div>
+          {showDate && <div style={styles.resDateSmall}><Icon name="Calendar" size={12} color="#8FA3C9" /> {fmtDateHuman(r.date)}</div>}
+          {timeRange && <div style={styles.resDateSmall}><Icon name="Clock" size={12} color="#8FA3C9" /> {timeRange}</div>}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ ...styles.statusPill, background: `${STATUS_COLORS[status]}1F`, color: STATUS_COLORS[status] }}>
+            {status === 'pagado' ? <Icon name="CheckCircle2" size={12} color={STATUS_COLORS[status]} /> : <Icon name="Clock" size={12} color={STATUS_COLORS[status]} />} {STATUS_LABELS[status]}
+          </div>
+          <Icon name="ChevronDown" size={16} color="#8FA3C9" style={{ transition: 'transform 0.2s ease', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+        </div>
+      </div>
+
+      {open && (
+        <div style={styles.resCardBody}>
+          {r.phone && <div style={styles.resPhone}><Icon name="Phone" size={12} color="#8FA3C9" /> {r.phone}</div>}
+
+          {r.isExempt ? (
+            <div style={styles.exemptBox}>
+              <Icon name="Sparkles" size={14} color="#5B2FBF" />
+              <div>
+                <div style={{ fontWeight: 700 }}>Uso social exonerado de pago</div>
+                {r.exemptReason && <div style={{ marginTop: 2 }}>{r.exemptReason}</div>}
+                {Number(r.exemptRefValue) > 0 && (
+                  <div style={{ marginTop: 4, fontSize: 11, opacity: 0.75 }}>Valor referencial (no es ingreso): {fmtMoney(r.exemptRefValue)}</div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={styles.moneyRow}>
+                <div style={styles.moneyBlock}>
+                  <span style={styles.moneyLabel}>Total</span>
+                  <span style={styles.moneyVal}>{fmtMoney(total)}</span>
+                </div>
+                <div style={styles.moneyBlock}>
+                  <span style={styles.moneyLabel}>Abonado</span>
+                  <span style={{ ...styles.moneyVal, color: '#1B8A3E' }}>{fmtMoney(paid)}</span>
+                </div>
+                <div style={styles.moneyBlock}>
+                  <span style={styles.moneyLabel}>Saldo</span>
+                  <span style={{ ...styles.moneyVal, color: total - paid > 0 ? '#FF6B4A' : '#1B8A3E' }}>{fmtMoney(Math.max(total - paid, 0))}</span>
+                </div>
+              </div>
+
+              {deposit > 0 && (
+                <div style={styles.depositRow}>
+                  <Icon name="Sparkles" size={12} color="#8A6D00" /> Depósito de garantía: <strong>{fmtMoney(deposit)}</strong>
+                </div>
+              )}
+            </>
+          )}
+
+          {extrasList.length > 0 && (
+            <div style={styles.extrasRow}>
+              {extrasList.map((ex, i) => (
+                <span key={i} style={styles.extraChip}><Icon name={ex.icon} size={12} color="#1D6E92" /> {ex.label}</span>
+              ))}
+            </div>
+          )}
+
+          {r.notes && <div style={styles.notesBox}><Icon name="StickyNote" size={12} color="#6B7B9E" /> {r.notes}</div>}
+
+          {(canEditCard || canRemoveCard) && (
+            <div style={styles.cardActions}>
+              {canEditCard && (
+                <button style={styles.iconBtn} onClick={(e) => { e.stopPropagation(); onEdit(); }}><Icon name="Edit2" size={14} color="#0B1F5C" /> Editar</button>
+              )}
+              {canRemoveCard && (
+                <button style={{ ...styles.iconBtn, color: '#FF6B4A' }} onClick={(e) => { e.stopPropagation(); onDelete(); }}><Icon name="Trash2" size={14} color="#FF6B4A" /> Eliminar</button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatCard({ icon, label, value, color, wide }) {
+  return (
+    <div style={{ ...styles.statCard, ...(wide ? { gridColumn: 'span 2' } : {}) }}>
+      <div style={{ ...styles.statIconWrap, background: `linear-gradient(145deg, ${color}, ${color}CC)` }}>
+        <Icon name={icon} size={18} color="#fff" />
+      </div>
+      <div>
+        <div style={styles.statValue}>{value}</div>
+        <div style={styles.statLabel}>{label}</div>
+      </div>
+    </div>
+  );
+}
+
+function ReservationForm({ data, onCancel, onSave, saving }) {
+  const [d, setD] = useState(data);
+  const [submitting, setSubmitting] = useState(false);
+  const set = (patch) => setD(prev => ({ ...prev, ...patch }));
+  const setExtra = (patch) => setD(prev => ({ ...prev, extras: { ...prev.extras, ...patch } }));
+
+  const canSave = d.date && d.clientName.trim().length > 0 && (!d.isExempt || d.exemptReason.trim().length > 0);
+
+  const handleSave = async () => {
+    if (submitting || !canSave) return;
+    setSubmitting(true);
+    await onSave(d);
+    setSubmitting(false); // si el guardado fue exitoso el modal ya se cerró y este componente se desmontó
+  };
+
+  const safeCancel = () => { if (!submitting) onCancel(); };
+
+  return (
+    <div style={styles.modalOverlay} onClick={safeCancel}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>{d.id ? 'Editar reserva' : 'Nueva reserva'}</h2>
+          <button style={styles.closeBtn} onClick={safeCancel} disabled={submitting}><Icon name="X" size={18} color="#5C6D93" /></button>
+        </div>
+
+        <div className="wilcoa-form-grid" style={styles.formGrid}>
+          <Field label="Fecha del evento">
+            <input type="date" value={d.date} onChange={e => set({ date: e.target.value })} style={styles.input} />
+          </Field>
+          <Field label="Nombre del cliente">
+            <input placeholder="Ej: María Rodríguez" value={d.clientName} onChange={e => set({ clientName: e.target.value })} style={styles.input} />
+          </Field>
+          <Field label="Hora de inicio">
+            <input type="time" value={d.startTime} onChange={e => set({ startTime: e.target.value })} style={styles.input} />
+          </Field>
+          <Field label="Hora de fin">
+            <input type="time" value={d.endTime} onChange={e => set({ endTime: e.target.value })} style={styles.input} />
+          </Field>
+          <Field label="Teléfono">
+            <input placeholder="8888-8888" value={d.phone} onChange={e => set({ phone: e.target.value })} style={styles.input} />
+          </Field>
+        </div>
+
+        <div style={styles.sectionLabel}><Icon name="DollarSign" size={14} color="#0B1F5C" /> Condiciones de pago</div>
+        <label style={{ ...styles.checkboxRow, background: d.isExempt ? 'rgba(123,79,224,0.1)' : 'transparent', padding: '9px 10px', borderRadius: 10 }}>
+          <input
+            type="checkbox"
+            checked={!!d.isExempt}
+            onChange={e => {
+              const exempt = e.target.checked;
+              set(exempt ? { isExempt: true, totalAmount: '0', paidAmount: '0', depositAmount: '0' } : { isExempt: false });
+            }}
+          />
+          <Icon name="Sparkles" size={14} color="#5B2FBF" /> Exonerar del pago del alquiler (préstamo del salón para actividad de bien social)
+        </label>
+
+        {d.isExempt ? (
+          <>
+            <Field label="Motivo de la exoneración (obligatorio, queda en el registro)">
+              <input
+                placeholder="Ej: Actividad benéfica Cruz Roja, bingo de la escuela…"
+                value={d.exemptReason}
+                onChange={e => set({ exemptReason: e.target.value })}
+                style={styles.input}
+              />
+            </Field>
+            <Field label="Valor referencial del alquiler (₡) — solo registro interno, no se contabiliza como ingreso">
+              <input type="number" min="0" placeholder="0" value={d.exemptRefValue} onChange={e => set({ exemptRefValue: e.target.value })} style={styles.input} />
+            </Field>
+          </>
+        ) : (
+          <div className="wilcoa-form-grid" style={styles.formGrid}>
+            <Field label="Monto total (₡)">
+              <input type="number" min="0" placeholder="0" value={d.totalAmount} onChange={e => set({ totalAmount: e.target.value })} style={styles.input} />
+            </Field>
+            <Field label="Monto abonado (₡)">
+              <input type="number" min="0" placeholder="0" value={d.paidAmount} onChange={e => set({ paidAmount: e.target.value })} style={styles.input} />
+            </Field>
+            <Field label="Depósito de garantía (₡)">
+              <input type="number" min="0" placeholder="0" value={d.depositAmount} onChange={e => set({ depositAmount: e.target.value })} style={styles.input} />
+            </Field>
+          </div>
+        )}
+
+        <div style={styles.sectionLabel}><Icon name="Package" size={14} color="#0B1F5C" /> Menaje extra requerido</div>
+        <div className="wilcoa-extras-grid" style={styles.extrasGrid}>
+          <Field label="Mesas">
+            <input type="number" min="0" value={d.extras.mesas} onChange={e => setExtra({ mesas: Number(e.target.value) })} style={styles.input} />
+          </Field>
+          <Field label="Sillas">
+            <input type="number" min="0" value={d.extras.sillas} onChange={e => setExtra({ sillas: Number(e.target.value) })} style={styles.input} />
+          </Field>
+          <Field label="Manteles">
+            <input type="number" min="0" value={d.extras.manteles} onChange={e => setExtra({ manteles: Number(e.target.value) })} style={styles.input} />
+          </Field>
+          <Field label="Sobremanteles">
+            <input type="number" min="0" value={d.extras.sobremanteles} onChange={e => setExtra({ sobremanteles: Number(e.target.value) })} style={styles.input} />
+          </Field>
+        </div>
+        <label style={styles.checkboxRow}>
+          <input type="checkbox" checked={!!d.extras.sonido} onChange={e => setExtra({ sonido: e.target.checked })} />
+          <Icon name="Volume2" size={14} color="#213157" /> Requiere equipo de sonido
+        </label>
+        <Field label="Otro menaje / observaciones de equipo">
+          <input placeholder="Ej: tarima, cortinas, cocina completa…" value={d.extras.otros} onChange={e => setExtra({ otros: e.target.value })} style={styles.input} />
+        </Field>
+        <Field label="Notas adicionales">
+          <textarea placeholder="Detalles del evento, horario, condiciones especiales…" value={d.notes} onChange={e => set({ notes: e.target.value })} style={{ ...styles.input, minHeight: 64, resize: 'vertical' }} />
+        </Field>
+
+        <div style={styles.modalActions}>
+          <button style={styles.cancelBtn} onClick={safeCancel} disabled={submitting}>Cancelar</button>
+          <button
+            style={{ ...styles.saveBtn, ...((canSave && !submitting) ? {} : styles.saveBtnDisabled) }}
+            disabled={!canSave || submitting}
+            onClick={handleSave}
+          >
+            <Icon name="Save" size={15} color="#fff" /> {submitting ? 'Guardando…' : 'Guardar reserva'}
+          </button>
+        </div>
+        {submitting && (
+          <p style={{ fontSize: 11.5, color: '#8FA3C9', textAlign: 'center', marginTop: 8 }}>
+            No cierres esta ventana ni el navegador todavía, se está guardando en el servidor…
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ShareModal({ urlDraft, setUrlDraft, onClose, onSaveUrl, hallName }) {
+  const [copied, setCopied] = useState(false);
+  const [qrStatus, setQrStatus] = useState('loading');
+  const qrBoxRef = useRef(null);
+  const validUrl = /^https?:\/\/.+/.test(urlDraft.trim());
+
+  useEffect(() => {
+    if (window.QRCode) { setQrStatus('ready'); return; }
+    const existing = document.getElementById('wilcoa-qrcode-lib');
+    if (existing) {
+      existing.addEventListener('load', () => setQrStatus('ready'));
+      existing.addEventListener('error', () => setQrStatus('error'));
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = 'wilcoa-qrcode-lib';
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    script.onload = () => setQrStatus('ready');
+    script.onerror = () => setQrStatus('error');
+    document.head.appendChild(script);
+  }, []);
+
+  useEffect(() => {
+    if (qrStatus === 'ready' && validUrl && qrBoxRef.current && window.QRCode) {
+      qrBoxRef.current.innerHTML = '';
+      try {
+        new window.QRCode(qrBoxRef.current, {
+          text: urlDraft.trim(),
+          width: 200,
+          height: 200,
+          colorDark: '#0B1F5C',
+          colorLight: '#ffffff',
+          correctLevel: window.QRCode.CorrectLevel.M,
+        });
+      } catch {
+        setQrStatus('error');
+      }
+    }
+  }, [qrStatus, validUrl, urlDraft]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(urlDraft.trim());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}><Icon name="Share2" size={18} color="#0B1F5C" style={{ marginRight: 6, verticalAlign: -3 }} /> Compartir {hallName}</h2>
+          <button style={styles.closeBtn} onClick={onClose}><Icon name="X" size={18} color="#5C6D93" /></button>
+        </div>
+
+        <Field label="Pega aquí el link publicado (una sola vez)">
+          <input
+            placeholder="https://claude.site/artifacts/..."
+            value={urlDraft}
+            onChange={e => setUrlDraft(e.target.value)}
+            style={styles.input}
+          />
+        </Field>
+        <p style={styles.shareHint}>
+          ¿Aún no tienes el link? Publica primero este artefacto desde el ícono de compartir de Claude, copia esa dirección y pégala aquí.
+        </p>
+
+        {validUrl && (
+          <div style={styles.qrBox}>
+            <div ref={qrBoxRef} style={styles.qrImg}>
+              {qrStatus !== 'ready' && (
+                <div style={styles.qrPlaceholder}>
+                  {qrStatus === 'loading' ? 'Generando código QR…' : 'No se pudo generar el QR aquí. Usa "Copiar link" y compártelo por WhatsApp.'}
+                </div>
+              )}
+            </div>
+            <p style={styles.qrCaption}><Icon name="QrCode" size={13} color="#5C6D93" style={{ verticalAlign: -2 }} /> Cualquiera puede escanear este código con la cámara del celular para abrir la agenda directamente.</p>
+            <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+              <button style={styles.cancelBtn} onClick={handleCopy}><Icon name="Copy" size={14} color="#5C6D93" style={{ marginRight: 6, verticalAlign: -2 }} />{copied ? 'Copiado' : 'Copiar link'}</button>
+              <button style={styles.saveBtn} onClick={onSaveUrl}><Icon name="Save" size={15} color="#fff" /> Guardar</button>
+            </div>
+          </div>
+        )}
+
+        {!validUrl && (
+          <div style={styles.modalActions}>
+            <button style={styles.cancelBtn} onClick={onClose}>Cerrar</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LoginModal({ config, onClose, onLogin }) {
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+
+  const submit = () => {
+    const val = code.trim();
+    if (!val) return;
+    if (config.adminCode && val === config.adminCode) { onLogin(ROLES.ADMIN, val); return; }
+    if (config.editorCode && val === config.editorCode) { onLogin(ROLES.EDITOR, val); return; }
+    setError('Código incorrecto. Verifica con la junta directiva.');
+  };
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={{ ...styles.modal, maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Iniciar sesión</h2>
+          <button style={styles.closeBtn} onClick={onClose}><Icon name="X" size={18} color="#5C6D93" /></button>
+        </div>
+        <Field label="Código de acceso">
+          <input
+            type="password"
+            autoFocus
+            placeholder="Ingresa tu código"
+            value={code}
+            onChange={e => { setCode(e.target.value); setError(''); }}
+            onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+            style={styles.input}
+          />
+        </Field>
+        {error && <p style={{ color: '#E23B3B', fontSize: 12.5, margin: '4px 0 8px' }}>{error}</p>}
+        <p style={styles.shareHint}>
+          Los códigos de Administrador y Editor los define la persona administradora desde "Códigos de acceso".
+          Si no tienes uno, puedes seguir consultando la agenda, el calendario y el resumen sin iniciar sesión.
+        </p>
+        <div style={styles.modalActions}>
+          <button style={styles.cancelBtn} onClick={onClose}>Cancelar</button>
+          <button style={styles.saveBtn} onClick={submit}><Icon name="Check" size={15} color="#fff" /> Entrar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AccessManagerModal({ config, onClose, onSave }) {
+  const [adminCode, setAdminCode] = useState(config.adminCode || '');
+  const [editorCode, setEditorCode] = useState(config.editorCode || '');
+  const same = adminCode.trim() !== '' && adminCode.trim() === editorCode.trim();
+  const canSave = adminCode.trim().length >= 4 && editorCode.trim().length >= 4 && !same;
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={styles.modal} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Códigos de acceso</h2>
+          <button style={styles.closeBtn} onClick={onClose}><Icon name="X" size={18} color="#5C6D93" /></button>
+        </div>
+        <p style={styles.shareHint}>
+          Comparte el código de <strong>Administrador</strong> únicamente con la otra persona directiva de confianza, y el de <strong>Editor</strong> con quien agenda las reservas.
+          Cualquier persona con el link puede consultar la agenda, el calendario y el resumen sin necesidad de código.
+          Recuerda: al ser una app sin servidor propio, estos códigos son una protección básica para uso entre personas de confianza, no un sistema de seguridad bancario.
+        </p>
+        <Field label="Código de Administrador (control total)">
+          <input value={adminCode} onChange={e => setAdminCode(e.target.value)} style={styles.input} placeholder="Mínimo 4 caracteres" />
+        </Field>
+        <Field label="Código de Editor (puede agendar y editar reservas)">
+          <input value={editorCode} onChange={e => setEditorCode(e.target.value)} style={styles.input} placeholder="Mínimo 4 caracteres" />
+        </Field>
+        {same && <p style={{ color: '#E23B3B', fontSize: 12.5, margin: '0 0 8px' }}>Los dos códigos deben ser diferentes.</p>}
+        <div style={styles.modalActions}>
+          <button style={styles.cancelBtn} onClick={onClose}>Cancelar</button>
+          <button style={{ ...styles.saveBtn, ...(canSave ? {} : styles.saveBtnDisabled) }} disabled={!canSave} onClick={() => onSave(adminCode.trim(), editorCode.trim())}>
+            <Icon name="Save" size={15} color="#fff" /> Guardar códigos
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <div style={styles.field}>
+      <label style={styles.fieldLabel}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+const fontImport = `
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+  * { box-sizing: border-box; font-family: 'Inter', sans-serif; }
+  input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.3); cursor: pointer; }
+  input:focus, textarea:focus { outline: none; border-color: #47C3EF !important; box-shadow: 0 0 0 3px rgba(71,195,239,0.18) !important; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: rgba(11,31,92,0.25); border-radius: 8px; }
+  @keyframes wilcoa-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @media (max-width: 760px) {
+    .wilcoa-cal-layout { grid-template-columns: 1fr !important; }
+    .wilcoa-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    .wilcoa-form-grid { grid-template-columns: 1fr !important; }
+    .wilcoa-extras-grid { grid-template-columns: repeat(2, 1fr) !important; }
+  }
+`;
+
+const styles = {
+  app: {
+    minHeight: '100vh',
+    background: 'radial-gradient(circle at 15% 0%, #12277A 0%, #0A1846 45%, #060F30 100%)',
+    padding: '20px 16px 60px',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  bgGlowA: { position: 'absolute', top: -120, right: -100, width: 340, height: 340, borderRadius: '50%', background: 'radial-gradient(circle, rgba(71,195,239,0.35), transparent 70%)', filter: 'blur(10px)', pointerEvents: 'none' },
+  bgGlowB: { position: 'absolute', bottom: -140, left: -80, width: 320, height: 320, borderRadius: '50%', background: 'radial-gradient(circle, rgba(27,138,62,0.25), transparent 70%)', filter: 'blur(10px)', pointerEvents: 'none' },
+
+  header: { position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', maxWidth: 1080, margin: '0 auto 18px' },
+  headerLeft: { display: 'flex', alignItems: 'center', gap: 14 },
+  logoWrap: {
+    width: 60, height: 60, borderRadius: 18, background: 'linear-gradient(155deg, #ffffff, #E8F2FF)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative',
+    boxShadow: '0 10px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.8)', border: '1px solid rgba(255,255,255,0.4)',
+    flexShrink: 0, overflow: 'hidden', transition: 'transform 0.25s ease',
+  },
+  logoImg: { width: '100%', height: '100%', objectFit: 'cover' },
+  logoEditBadge: { position: 'absolute', bottom: -3, right: -3, width: 20, height: 20, borderRadius: '50%', background: '#47C3EF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', boxShadow: '0 3px 8px rgba(0,0,0,0.4)' },
+  brandRow: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 },
+  brandLabel: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 11, letterSpacing: 2.5, color: '#47C3EF', fontWeight: 600 },
+  hallName: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, color: '#fff', margin: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', fontWeight: 600 },
+  hallNameInput: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 600, background: 'rgba(255,255,255,0.1)', border: '1px solid #47C3EF', borderRadius: 8, color: '#fff', padding: '4px 10px' },
+
+  newBtn: { display: 'flex', alignItems: 'center', gap: 8, background: 'linear-gradient(145deg, #47C3EF, #1E9BD6)', color: '#fff', border: 'none', borderRadius: 14, padding: '13px 20px', fontWeight: 600, fontSize: 14, cursor: 'pointer', boxShadow: '0 10px 22px rgba(71,195,239,0.4), inset 0 1px 0 rgba(255,255,255,0.4)', transition: 'transform 0.15s ease' },
+  shareBtn: { display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 14, padding: '13px 18px', fontWeight: 600, fontSize: 14, cursor: 'pointer' },
+  accessBadge: { display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 12, padding: '9px 14px', fontWeight: 600, fontSize: 12.5, cursor: 'pointer' },
+  accessBadgeAdmin: { background: 'linear-gradient(145deg, #1B8A3E, #157030)', border: 'none', cursor: 'default' },
+  accessBadgeEditor: { background: 'linear-gradient(145deg, #47C3EF, #1E9BD6)', border: 'none', cursor: 'default' },
+  logoutBtn: { background: 'transparent', color: 'rgba(255,255,255,0.6)', border: 'none', fontSize: 12, textDecoration: 'underline', cursor: 'pointer', padding: '4px 2px' },
+
+  tabs: { display: 'flex', gap: 8, maxWidth: 1080, margin: '0 auto 22px', alignItems: 'center', flexWrap: 'wrap' },
+  tabBtn: { display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '9px 16px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' },
+  tabBtnActive: { background: 'linear-gradient(145deg, #ffffff, #E8F2FF)', color: '#0B1F5C', boxShadow: '0 6px 16px rgba(0,0,0,0.25)' },
+  savingTag: { fontSize: 12, color: 'rgba(255,255,255,0.5)', marginLeft: 6 },
+  refreshBtn: { display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 13px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' },
+
+  main: { maxWidth: 1080, margin: '0 auto' },
+
+  calendarLayout: { display: 'grid', gridTemplateColumns: 'minmax(0,1.3fr) minmax(0,1fr)', gap: 20 },
+  calCard: { background: 'linear-gradient(160deg, rgba(255,255,255,0.97), rgba(232,242,255,0.95))', borderRadius: 22, padding: 20, boxShadow: '0 20px 50px rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.5)' },
+  calHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  calTitle: { fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 17, color: '#0B1F5C' },
+  navBtn: { width: 32, height: 32, borderRadius: 10, border: 'none', background: 'rgba(11,31,92,0.08)', color: '#0B1F5C', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  weekRow: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 6 },
+  weekDay: { textAlign: 'center', fontSize: 'clamp(11px, 2.4vw, 14px)', fontWeight: 600, color: '#8FA3C9', textTransform: 'uppercase', letterSpacing: 0.5 },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 5 },
+  cellEmpty: { aspectRatio: '1' },
+  cell: {
+    aspectRatio: '1', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    cursor: 'pointer', background: '#fff', boxShadow: '0 2px 6px rgba(11,31,92,0.08), inset 0 1px 0 rgba(255,255,255,0.9)',
+    border: '1px solid rgba(11,31,92,0.05)', position: 'relative', transition: 'transform 0.12s ease',
+  },
+  cellToday: { border: '1.5px solid #47C3EF' },
+  cellSelected: { background: 'linear-gradient(155deg, #0B1F5C, #163B9E)', boxShadow: '0 10px 20px rgba(11,31,92,0.45)', transform: 'translateY(-2px)' },
+  cellNum: { fontSize: 'clamp(15px, 3.2vw, 20px)', fontWeight: 700, color: '#213157' },
+  dot: { position: 'absolute', bottom: '8%', width: 'clamp(6px, 1.4vw, 9px)', height: 'clamp(6px, 1.4vw, 9px)', borderRadius: '50%' },
+  legendRow: { display: 'flex', gap: 16, marginTop: 14, justifyContent: 'center' },
+  legendItem: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#5C6D93', fontWeight: 500 },
+
+  dayPanel: { background: 'linear-gradient(160deg, rgba(255,255,255,0.97), rgba(232,242,255,0.95))', borderRadius: 22, padding: 20, boxShadow: '0 20px 50px rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.5)', display: 'flex', flexDirection: 'column', minHeight: 300 },
+  dayPanelHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 10 },
+  dayPanelDate: { fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 15, color: '#0B1F5C', textTransform: 'capitalize' },
+  smallAddBtn: { display: 'flex', alignItems: 'center', gap: 5, background: '#1B8A3E', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 6px 14px rgba(27,138,62,0.35)', whiteSpace: 'nowrap' },
+
+  emptyDay: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', padding: '30px 10px' },
+  emptyDayText: { color: '#8FA3C9', fontSize: 13.5, margin: 0, maxWidth: 220 },
+
+  resStack: { display: 'flex', flexDirection: 'column', gap: 12 },
+  resCard: { background: '#fff', borderRadius: 16, padding: 16, boxShadow: '0 8px 20px rgba(11,31,92,0.1)', border: '1px solid rgba(11,31,92,0.06)' },
+  resCardTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, cursor: 'pointer', userSelect: 'none' },
+  resCardBody: { marginTop: 10, paddingTop: 10, borderTop: '1px solid #EEF1F8' },
+  resClient: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 14.5, color: '#0B1F5C' },
+  resDateSmall: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#8FA3C9', marginTop: 3, textTransform: 'capitalize' },
+  resPhone: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#8FA3C9', marginTop: 2 },
+  statusPill: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 700, padding: '5px 10px', borderRadius: 999, whiteSpace: 'nowrap' },
+  depositRow: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8A6D00', background: 'rgba(242,183,5,0.14)', padding: '7px 10px', borderRadius: 10, marginBottom: 8, fontWeight: 500 },
+  exemptBox: { display: 'flex', gap: 8, background: 'rgba(123,79,224,0.1)', color: '#3D2270', padding: '10px 12px', borderRadius: 12, marginBottom: 10, fontSize: 12.5, lineHeight: 1.5 },
+
+  moneyRow: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, background: '#F5F8FF', borderRadius: 12, padding: '10px 12px', marginBottom: 10 },
+  moneyBlock: { display: 'flex', flexDirection: 'column' },
+  moneyLabel: { fontSize: 10.5, color: '#8FA3C9', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.3 },
+  moneyVal: { fontSize: 14, fontWeight: 700, color: '#0B1F5C' },
+
+  extrasRow: { display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
+  extraChip: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, background: 'rgba(71,195,239,0.12)', color: '#1D6E92', padding: '5px 10px', borderRadius: 999, fontWeight: 600 },
+
+  notesBox: { display: 'flex', gap: 6, fontSize: 12, color: '#6B7B9E', background: '#FAFBFF', padding: '8px 10px', borderRadius: 10, marginBottom: 8, lineHeight: 1.4 },
+
+  cardActions: { display: 'flex', gap: 8, marginTop: 6 },
+  iconBtn: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 600, color: '#0B1F5C', background: 'rgba(11,31,92,0.06)', border: 'none', borderRadius: 9, padding: '7px 12px', cursor: 'pointer' },
+
+  listWrap: { display: 'flex', flexDirection: 'column', gap: 16 },
+  searchBar: { display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.95)', borderRadius: 14, padding: '11px 14px', boxShadow: '0 8px 20px rgba(0,0,0,0.2)' },
+  searchInput: { flex: 1, border: 'none', background: 'transparent', fontSize: 13.5, color: '#213157' },
+
+  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 },
+  statCard: { background: 'linear-gradient(160deg, rgba(255,255,255,0.97), rgba(232,242,255,0.95))', borderRadius: 18, padding: 16, display: 'flex', alignItems: 'center', gap: 12, boxShadow: '0 14px 30px rgba(0,0,0,0.25)' },
+  statIconWrap: { width: 40, height: 40, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 14px rgba(0,0,0,0.25)', flexShrink: 0 },
+  statValue: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 18, fontWeight: 700, color: '#0B1F5C', lineHeight: 1.15 },
+  statLabel: { fontSize: 11.5, color: '#7A8CB0', fontWeight: 500, marginTop: 2 },
+
+  modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(6,15,48,0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 },
+  modal: { background: '#fff', borderRadius: 22, padding: 24, width: '100%', maxWidth: 520, maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 30px 70px rgba(0,0,0,0.5)' },
+  modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
+  modalTitle: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 19, color: '#0B1F5C', margin: 0, fontWeight: 600 },
+  closeBtn: { width: 30, height: 30, borderRadius: 9, border: 'none', background: '#F0F3FA', color: '#5C6D93', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+
+  formGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 6 },
+  extrasGrid: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 4 },
+  sectionLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 700, color: '#0B1F5C', textTransform: 'uppercase', letterSpacing: 0.4, margin: '16px 0 10px' },
+  field: { display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 10 },
+  fieldLabel: { fontSize: 12, fontWeight: 600, color: '#5C6D93' },
+  input: { border: '1.5px solid #E4E9F5', borderRadius: 10, padding: '10px 12px', fontSize: 13.5, color: '#213157', background: '#FBFCFF' },
+  checkboxRow: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#213157', fontWeight: 500, margin: '4px 0 14px', cursor: 'pointer' },
+
+  modalActions: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18, paddingTop: 16, borderTop: '1px solid #EEF1F8' },
+  shareHint: { fontSize: 12, color: '#8FA3C9', margin: '2px 0 16px', lineHeight: 1.5 },
+  qrBox: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, background: '#F5F8FF', borderRadius: 16, padding: 20, marginTop: 4 },
+  qrImg: { width: 220, height: 220, borderRadius: 12, background: '#fff', padding: 10, boxShadow: '0 8px 20px rgba(11,31,92,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  qrPlaceholder: { fontSize: 11.5, color: '#8FA3C9', textAlign: 'center', padding: 10, lineHeight: 1.4 },
+  qrCaption: { fontSize: 12, color: '#5C6D93', textAlign: 'center', lineHeight: 1.5, maxWidth: 300, margin: 0 },
+  cancelBtn: { padding: '11px 18px', borderRadius: 11, border: '1.5px solid #E4E9F5', background: '#fff', color: '#5C6D93', fontWeight: 600, fontSize: 13.5, cursor: 'pointer' },
+  saveBtn: { display: 'flex', alignItems: 'center', gap: 7, padding: '11px 20px', borderRadius: 11, border: 'none', background: 'linear-gradient(145deg, #1B8A3E, #157030)', color: '#fff', fontWeight: 700, fontSize: 13.5, cursor: 'pointer', boxShadow: '0 10px 22px rgba(27,138,62,0.4)' },
+  saveBtnDisabled: { opacity: 0.45, cursor: 'not-allowed', boxShadow: 'none' },
+
+  toast: { position: 'fixed', bottom: 22, left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(145deg, #0B1F5C, #163B9E)', color: '#fff', padding: '12px 20px', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, fontWeight: 600, boxShadow: '0 14px 34px rgba(0,0,0,0.45)', zIndex: 60 },
+  toastError: { background: 'linear-gradient(145deg, #B23B26, #8C2C1B)' },
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<AgendaWilcoa />);
+</script>
+</body>
+</html>
