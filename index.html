@@ -196,6 +196,7 @@ function resizeImage(file, maxDim = 320) {
 function AgendaWilcoa() {
   const [config, setConfig] = useState(defaultConfig);
   const [reservations, setReservations] = useState([]);
+  const [clients, setClients] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState('calendar');
@@ -208,6 +209,9 @@ function AgendaWilcoa() {
   const [editingHallName, setEditingHallName] = useState(false);
   const [hallNameDraft, setHallNameDraft] = useState('');
   const [query, setQuery] = useState('');
+  const [showClientForm, setShowClientForm] = useState(false);
+  const [clientFormData, setClientFormData] = useState({ id: null, name: '', phone: '' });
+  const [clientQuery, setClientQuery] = useState('');
   const [toast, setToast] = useState(null);
   const fileInputRef = useRef(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -224,6 +228,7 @@ function AgendaWilcoa() {
         const parsed = JSON.parse(res.value);
         setConfig({ ...defaultConfig, ...(parsed.config || {}) });
         setReservations(Array.isArray(parsed.reservations) ? parsed.reservations : []);
+        setClients(Array.isArray(parsed.clients) ? parsed.clients : []);
       }
       setLastSync(new Date());
     } catch (e) {
@@ -262,10 +267,10 @@ function AgendaWilcoa() {
     return () => clearInterval(interval);
   }, [showForm, editingHallName]);
 
-  const persist = async (nextConfig, nextRes) => {
+  const persist = async (nextConfig, nextRes, nextClients) => {
     setSaving(true);
     try {
-      await window.storage.set(STORAGE_KEY, JSON.stringify({ config: nextConfig, reservations: nextRes }), true);
+      await window.storage.set(STORAGE_KEY, JSON.stringify({ config: nextConfig, reservations: nextRes, clients: nextClients }), true);
       return true;
     } catch (e) {
       showToast('No se pudo guardar. Revisa tu conexión e intenta de nuevo sin cerrar la app.', 'error');
@@ -290,7 +295,7 @@ function AgendaWilcoa() {
 
   const updateConfig = async (patch) => {
     const next = { ...config, ...patch };
-    const ok = await persist(next, reservations);
+    const ok = await persist(next, reservations, clients);
     if (ok) setConfig(next);
     return ok;
   };
@@ -303,7 +308,7 @@ function AgendaWilcoa() {
       next = [...reservations, { ...data, id: uid() }];
     }
     next.sort((a, b) => a.date.localeCompare(b.date));
-    const ok = await persist(config, next);
+    const ok = await persist(config, next, clients);
     if (ok) {
       setReservations(next);
       showToast(data.id ? 'Reserva actualizada' : 'Reserva agregada');
@@ -314,10 +319,37 @@ function AgendaWilcoa() {
   const deleteReservation = async (id) => {
     if (!canDelete(role)) return false;
     const next = reservations.filter(r => r.id !== id);
-    const ok = await persist(config, next);
+    const ok = await persist(config, next, clients);
     if (ok) {
       setReservations(next);
       showToast('Reserva eliminada', 'ok');
+    }
+    return ok;
+  };
+
+  const saveClient = async (data) => {
+    let next;
+    if (data.id) {
+      next = clients.map(c => c.id === data.id ? data : c);
+    } else {
+      next = [...clients, { ...data, id: uid() }];
+    }
+    next.sort((a, b) => a.name.localeCompare(b.name));
+    const ok = await persist(config, reservations, next);
+    if (ok) {
+      setClients(next);
+      showToast(data.id ? 'Cliente actualizado' : 'Cliente agregado');
+    }
+    return ok;
+  };
+
+  const deleteClient = async (id) => {
+    if (!canDelete(role)) return false;
+    const next = clients.filter(c => c.id !== id);
+    const ok = await persist(config, reservations, next);
+    if (ok) {
+      setClients(next);
+      showToast('Cliente eliminado', 'ok');
     }
     return ok;
   };
@@ -360,6 +392,13 @@ function AgendaWilcoa() {
     return list.sort((a, b) => a.date.localeCompare(b.date));
   }, [reservations, query]);
 
+  const filteredClients = useMemo(() => {
+    const q = clientQuery.trim().toLowerCase();
+    let list = [...clients];
+    if (q) list = list.filter(c => c.name.toLowerCase().includes(q) || (c.phone || '').includes(q));
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [clients, clientQuery]);
+
   const stats = useMemo(() => {
     const now = new Date();
     const upcoming = reservations.filter(r => parseDateKey(r.date) >= new Date(now.getFullYear(), now.getMonth(), now.getDate()));
@@ -383,6 +422,16 @@ function AgendaWilcoa() {
     if (!canCreateEdit(role)) return;
     setFormData({ ...emptyRes, ...r, extras: { ...emptyExtras, ...r.extras } });
     setShowForm(true);
+  };
+  const openNewClientForm = () => {
+    if (!canCreateEdit(role)) return;
+    setClientFormData({ id: null, name: '', phone: '' });
+    setShowClientForm(true);
+  };
+  const openEditClientForm = (c) => {
+    if (!canCreateEdit(role)) return;
+    setClientFormData({ ...c });
+    setShowClientForm(true);
   };
 
   if (!loaded) {
@@ -484,6 +533,7 @@ function AgendaWilcoa() {
         {[
           { id: 'calendar', label: 'Calendario', icon: 'LayoutGrid' },
           { id: 'list', label: 'Reservas', icon: 'List' },
+          { id: 'clients', label: 'Clientes', icon: 'User' },
           { id: 'stats', label: 'Resumen', icon: 'TrendingUp' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{ ...styles.tabBtn, ...(tab === t.id ? styles.tabBtnActive : {}) }}>
@@ -612,6 +662,39 @@ function AgendaWilcoa() {
           </div>
         )}
 
+        {tab === 'clients' && (
+          <div style={styles.listWrap}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ ...styles.searchBar, flex: 1 }}>
+                <Icon name="Search" size={16} color="#8FA3C9" />
+                <input
+                  placeholder="Buscar cliente por nombre o teléfono…"
+                  value={clientQuery}
+                  onChange={e => setClientQuery(e.target.value)}
+                  style={styles.searchInput}
+                />
+              </div>
+              {canCreateEdit(role) && (
+                <button style={styles.newBtn} onClick={openNewClientForm}>
+                  <Icon name="Plus" size={17} color="#fff" /> Nuevo cliente
+                </button>
+              )}
+            </div>
+            {filteredClients.length === 0 ? (
+              <div style={styles.emptyDay}>
+                <Icon name="User" size={26} color="#8FA3C9" />
+                <p style={styles.emptyDayText}>No hay clientes guardados todavía. Agrega el primero con "Nuevo cliente".</p>
+              </div>
+            ) : (
+              <div style={styles.resStack}>
+                {filteredClients.map(c => (
+                  <ClientCard key={c.id} c={c} onEdit={() => openEditClientForm(c)} onDelete={() => deleteClient(c.id)} role={role} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {tab === 'stats' && (
           <div className="wilcoa-stats-grid" style={styles.statsGrid}>
             <StatCard icon="Calendar" label="Reservas totales" value={stats.total} color="#0B1F5C" />
@@ -630,8 +713,17 @@ function AgendaWilcoa() {
         <ReservationForm
           data={formData}
           saving={saving}
+          clients={clients}
           onCancel={() => setShowForm(false)}
           onSave={async (d) => { const ok = await saveReservation(d); if (ok) setShowForm(false); }}
+        />
+      )}
+
+      {showClientForm && (
+        <ClientForm
+          data={clientFormData}
+          onCancel={() => setShowClientForm(false)}
+          onSave={async (d) => { const ok = await saveClient(d); if (ok) setShowClientForm(false); }}
         />
       )}
 
@@ -785,6 +877,31 @@ function ReservationCard({ r, onEdit, onDelete, showDate, defaultOpen, role }) {
   );
 }
 
+function ClientCard({ c, onEdit, onDelete, role }) {
+  const canEditCard = canCreateEdit(role);
+  const canRemoveCard = canDelete(role);
+  return (
+    <div style={styles.resCard}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={styles.resClient}><Icon name="User" size={14} color="#0B1F5C" /> {c.name}</div>
+          {c.phone && <div style={styles.resPhone}><Icon name="Phone" size={12} color="#8FA3C9" /> {c.phone}</div>}
+        </div>
+        {(canEditCard || canRemoveCard) && (
+          <div style={styles.cardActions}>
+            {canEditCard && (
+              <button style={styles.iconBtn} onClick={onEdit}><Icon name="Edit2" size={14} color="#0B1F5C" /> Editar</button>
+            )}
+            {canRemoveCard && (
+              <button style={{ ...styles.iconBtn, color: '#FF6B4A' }} onClick={onDelete}><Icon name="Trash2" size={14} color="#FF6B4A" /> Eliminar</button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function StatCard({ icon, label, value, color, wide }) {
   return (
     <div style={{ ...styles.statCard, ...(wide ? { gridColumn: 'span 2' } : {}) }}>
@@ -799,7 +916,7 @@ function StatCard({ icon, label, value, color, wide }) {
   );
 }
 
-function ReservationForm({ data, onCancel, onSave, saving }) {
+function ReservationForm({ data, onCancel, onSave, saving, clients }) {
   const [d, setD] = useState(data);
   const [submitting, setSubmitting] = useState(false);
   const set = (patch) => setD(prev => ({ ...prev, ...patch }));
@@ -829,7 +946,20 @@ function ReservationForm({ data, onCancel, onSave, saving }) {
             <input type="date" value={d.date} onChange={e => set({ date: e.target.value })} style={styles.input} />
           </Field>
           <Field label="Nombre del cliente">
-            <input placeholder="Ej: María Rodríguez" value={d.clientName} onChange={e => set({ clientName: e.target.value })} style={styles.input} />
+            <input
+              placeholder="Ej: María Rodríguez"
+              value={d.clientName}
+              list="wilcoa-clients-list"
+              onChange={e => {
+                const val = e.target.value;
+                const match = clients.find(c => c.name === val);
+                set(match && !d.phone ? { clientName: val, phone: match.phone } : { clientName: val });
+              }}
+              style={styles.input}
+            />
+            <datalist id="wilcoa-clients-list">
+              {clients.map(c => <option key={c.id} value={c.name} />)}
+            </datalist>
           </Field>
           <Field label="Hora de inicio">
             <input type="time" value={d.startTime} onChange={e => set({ startTime: e.target.value })} style={styles.input} />
@@ -924,6 +1054,48 @@ function ReservationForm({ data, onCancel, onSave, saving }) {
             No cierres esta ventana ni el navegador todavía, se está guardando…
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ClientForm({ data, onCancel, onSave }) {
+  const [d, setD] = useState(data);
+  const [submitting, setSubmitting] = useState(false);
+  const set = (patch) => setD(prev => ({ ...prev, ...patch }));
+  const canSave = d.name.trim().length > 0;
+
+  const handleSave = async () => {
+    if (submitting || !canSave) return;
+    setSubmitting(true);
+    await onSave({ ...d, name: d.name.trim(), phone: d.phone.trim() });
+    setSubmitting(false);
+  };
+  const safeCancel = () => { if (!submitting) onCancel(); };
+
+  return (
+    <div style={styles.modalOverlay} onClick={safeCancel}>
+      <div style={{ ...styles.modal, maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>{d.id ? 'Editar cliente' : 'Nuevo cliente'}</h2>
+          <button style={styles.closeBtn} onClick={safeCancel} disabled={submitting}><Icon name="X" size={18} color="#5C6D93" /></button>
+        </div>
+        <Field label="Nombre completo">
+          <input autoFocus placeholder="Ej: María Rodríguez" value={d.name} onChange={e => set({ name: e.target.value })} style={styles.input} />
+        </Field>
+        <Field label="Teléfono">
+          <input placeholder="8888-8888" value={d.phone} onChange={e => set({ phone: e.target.value })} style={styles.input} />
+        </Field>
+        <div style={styles.modalActions}>
+          <button style={styles.cancelBtn} onClick={safeCancel} disabled={submitting}>Cancelar</button>
+          <button
+            style={{ ...styles.saveBtn, ...((canSave && !submitting) ? {} : styles.saveBtnDisabled) }}
+            disabled={!canSave || submitting}
+            onClick={handleSave}
+          >
+            <Icon name="Save" size={15} color="#fff" /> {submitting ? 'Guardando…' : 'Guardar cliente'}
+          </button>
+        </div>
       </div>
     </div>
   );
