@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#2563eb">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Junta Directiva">
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Agenda Wilcoa</title>
@@ -11,13 +18,6 @@
   html, body { margin:0; padding:0; }
 </style>
 </head>
-<body>
-<div id="root"></div>
-<script type="text/babel" data-presets="react">
-const { useState, useEffect, useRef, useMemo } = React;
-
-/* ============ ICONOS (SVG propios, reemplazan lucide-react) ============ */
-const ICONS = {
   Calendar: () => <>
     <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
     <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
@@ -1212,5 +1212,6 @@ const styles = {
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<AgendaWilcoa />);
 </script>
+ <script> if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); } </script>           
 </body>
 </html>
