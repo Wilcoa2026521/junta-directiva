@@ -14,6 +14,29 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script>
+  // ============================================================
+  // Reemplazo de window.storage (esa función solo existe dentro
+  // de Claude.ai). Aquí guardamos en el navegador de cada aparato
+  // usando localStorage, con la misma forma de respuesta que
+  // esperaba el código original (res.value, etc).
+  // ============================================================
+  window.storage = {
+    async get(key, shared) {
+      const val = localStorage.getItem(key);
+      if (val === null) { throw new Error('not_found'); }
+      return { key, value: val, shared: !!shared };
+    },
+    async set(key, value, shared) {
+      localStorage.setItem(key, value);
+      return { key, value, shared: !!shared };
+    },
+    async delete(key, shared) {
+      localStorage.removeItem(key);
+      return { key, deleted: true, shared: !!shared };
+    },
+  };
+</script>
 <style>
   html, body { margin:0; padding:0; }
 </style>
@@ -870,7 +893,7 @@ function ReservationForm({ data, onCancel, onSave, saving }) {
         </div>
         {submitting && (
           <p style={{ fontSize: 11.5, color: '#8FA3C9', textAlign: 'center', marginTop: 8 }}>
-            No cierres esta ventana ni el navegador todavía, se está guardando en el servidor…
+            No cierres esta ventana ni el navegador todavía, se está guardando…
           </p>
         )}
       </div>
@@ -936,14 +959,14 @@ function ShareModal({ urlDraft, setUrlDraft, onClose, onSaveUrl, hallName }) {
 
         <Field label="Pega aquí el link publicado (una sola vez)">
           <input
-            placeholder="https://claude.site/artifacts/..."
+            placeholder="https://wilcoa2026521.github.io/junta-directiva/"
             value={urlDraft}
             onChange={e => setUrlDraft(e.target.value)}
             style={styles.input}
           />
         </Field>
         <p style={styles.shareHint}>
-          ¿Aún no tienes el link? Publica primero este artefacto desde el ícono de compartir de Claude, copia esa dirección y pégala aquí.
+          Pega aquí la dirección donde publicaste esta agenda, para poder compartirla con QR.
         </p>
 
         {validUrl && (
@@ -1033,7 +1056,6 @@ function AccessManagerModal({ config, onClose, onSave }) {
         <p style={styles.shareHint}>
           Comparte el código de <strong>Administrador</strong> únicamente con la otra persona directiva de confianza, y el de <strong>Editor</strong> con quien agenda las reservas.
           Cualquier persona con el link puede consultar la agenda, el calendario y el resumen sin necesidad de código.
-          Recuerda: al ser una app sin servidor propio, estos códigos son una protección básica para uso entre personas de confianza, no un sistema de seguridad bancario.
         </p>
         <Field label="Código de Administrador (control total)">
           <input value={adminCode} onChange={e => setAdminCode(e.target.value)} style={styles.input} placeholder="Mínimo 4 caracteres" />
@@ -1213,6 +1235,6 @@ const styles = {
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<AgendaWilcoa />);
 </script>
- <script> if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); } </script>           
+ <script> if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); } </script>
 </body>
 </html>
