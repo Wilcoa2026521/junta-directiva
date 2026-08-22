@@ -308,9 +308,26 @@ function AgendaWilcoa() {
       next = [...reservations, { ...data, id: uid() }];
     }
     next.sort((a, b) => a.date.localeCompare(b.date));
-    const ok = await persist(config, next, clients);
+
+    // Guarda o actualiza automáticamente el cliente en el directorio de Clientes
+    let nextClients = clients;
+    const name = (data.clientName || '').trim();
+    if (name) {
+      const existing = clients.find(c => c.name.toLowerCase() === name.toLowerCase());
+      const phone = (data.phone || '').trim();
+      if (existing) {
+        if (phone && existing.phone !== phone) {
+          nextClients = clients.map(c => c.id === existing.id ? { ...c, phone } : c);
+        }
+      } else {
+        nextClients = [...clients, { id: uid(), name, phone }].sort((a, b) => a.name.localeCompare(b.name));
+      }
+    }
+
+    const ok = await persist(config, next, nextClients);
     if (ok) {
       setReservations(next);
+      if (nextClients !== clients) setClients(nextClients);
       showToast(data.id ? 'Reserva actualizada' : 'Reserva agregada');
     }
     return ok;
