@@ -109,6 +109,7 @@
   QrCode: () => <><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><line x1="19" y1="14" x2="21" y2="14"/><line x1="14" y1="19" x2="14" y2="21"/><line x1="19" y1="19" x2="21" y2="21"/><line x1="21" y1="19" x2="19" y2="21"/></>,
   Copy: () => <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
   Share2: () => <><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></>,
+  Calculator: () => <><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="8.01" y2="10"/><line x1="12" y1="10" x2="12.01" y2="10"/><line x1="16" y1="10" x2="16.01" y2="10"/><line x1="8" y1="14" x2="8.01" y2="14"/><line x1="12" y1="14" x2="12.01" y2="14"/><line x1="16" y1="14" x2="16.01" y2="14"/><line x1="8" y1="18" x2="8.01" y2="18"/><line x1="12" y1="18" x2="12.01" y2="18"/><line x1="16" y1="18" x2="16.01" y2="18"/></>,
 };
 function Icon({ name, size = 16, color = 'currentColor', style }) {
   const shape = ICONS[name];
@@ -791,6 +792,8 @@ function AgendaWilcoa() {
           {toast.kind === 'error' ? <Icon name="AlertCircle" size={16} color="#fff" /> : <Icon name="Check" size={16} color="#fff" />} {toast.msg}
         </div>
       )}
+
+      <FloatingCalculator />
     </div>
   );
 }
@@ -819,6 +822,7 @@ function ReservationCard({ r, onEdit, onDelete, showDate, defaultOpen, role }) {
           <div style={styles.resClient}><Icon name="User" size={14} color="#0B1F5C" /> {r.clientName || 'Sin nombre'}</div>
           {showDate && <div style={styles.resDateSmall}><Icon name="Calendar" size={12} color="#8FA3C9" /> {fmtDateHuman(r.date)}</div>}
           {timeRange && <div style={styles.resDateSmall}><Icon name="Clock" size={12} color="#8FA3C9" /> {timeRange}</div>}
+          {showDate && r.phone && <div style={styles.resDateSmall}><Icon name="Phone" size={12} color="#8FA3C9" /> {r.phone}</div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ ...styles.statusPill, background: `${STATUS_COLORS[status]}1F`, color: STATUS_COLORS[status] }}>
@@ -1292,6 +1296,115 @@ function AccessManagerModal({ config, onClose, onSave }) {
   );
 }
 
+function FloatingCalculator() {
+  const [open, setOpen] = useState(false);
+  const [display, setDisplay] = useState('0');
+  const [stored, setStored] = useState(null);
+  const [operator, setOperator] = useState(null);
+  const [memory, setMemory] = useState(0);
+  const [waitingNew, setWaitingNew] = useState(false);
+
+  const inputDigit = (d) => {
+    if (waitingNew) { setDisplay(d); setWaitingNew(false); return; }
+    setDisplay(display === '0' ? d : display + d);
+  };
+  const inputDot = () => {
+    if (waitingNew) { setDisplay('0.'); setWaitingNew(false); return; }
+    if (!display.includes('.')) setDisplay(display + '.');
+  };
+  const backspace = () => setDisplay(display.length > 1 ? display.slice(0, -1) : '0');
+  const clearAll = () => { setDisplay('0'); setStored(null); setOperator(null); setWaitingNew(false); };
+  const clearEntry = () => setDisplay('0');
+  const percent = () => setDisplay(String(parseFloat(display || '0') / 100));
+  const sqrt = () => setDisplay(String(Math.sqrt(parseFloat(display || '0'))));
+
+  const compute = (a, b, op) => {
+    if (op === '+') return a + b;
+    if (op === '-') return a - b;
+    if (op === '×') return a * b;
+    if (op === '÷') return b === 0 ? 0 : a / b;
+    return b;
+  };
+
+  const chooseOperator = (op) => {
+    const current = parseFloat(display || '0');
+    if (stored !== null && operator && !waitingNew) {
+      const result = compute(stored, current, operator);
+      setDisplay(String(result));
+      setStored(result);
+    } else {
+      setStored(current);
+    }
+    setOperator(op);
+    setWaitingNew(true);
+  };
+
+  const equals = () => {
+    if (operator === null || stored === null) return;
+    const current = parseFloat(display || '0');
+    const result = compute(stored, current, operator);
+    setDisplay(String(result));
+    setStored(null);
+    setOperator(null);
+    setWaitingNew(true);
+  };
+
+  const memPlus = () => setMemory(m => m + parseFloat(display || '0'));
+  const memMinus = () => setMemory(m => m - parseFloat(display || '0'));
+  const memRecall = () => { setDisplay(String(memory)); setWaitingNew(true); };
+
+  if (!open) {
+    return (
+      <button style={styles.calcFab} onClick={() => setOpen(true)} title="Abrir calculadora">
+        <Icon name="Calculator" size={24} color="#F0DDB0" />
+      </button>
+    );
+  }
+
+  return (
+    <div style={styles.calcWrap}>
+      <div style={styles.calcHeader}>
+        <span style={styles.calcHeaderTitle}>
+          <Icon name="Calculator" size={13} color="#D8C9A3" style={{ marginRight: 6, verticalAlign: -2 }} />CALCULADORA
+        </span>
+        <button style={styles.calcCloseBtn} onClick={() => setOpen(false)}><Icon name="X" size={13} color="#fff" /></button>
+      </div>
+      <div style={styles.calcDisplay}>{display}</div>
+      <div style={styles.calcGrid}>
+        <button style={styles.calcBtnBlue} onClick={memRecall}>MRC</button>
+        <button style={styles.calcBtnPink} onClick={memMinus}>M-</button>
+        <button style={styles.calcBtnPink} onClick={memPlus}>M+</button>
+        <button style={styles.calcBtnPurple} onClick={sqrt}>√</button>
+        <button style={styles.calcBtnBlue} onClick={percent}>%</button>
+
+        <button style={styles.calcBtnGreen} onClick={backspace}>→</button>
+        <button style={styles.calcBtnPink} onClick={() => inputDigit('7')}>7</button>
+        <button style={styles.calcBtnPink} onClick={() => inputDigit('8')}>8</button>
+        <button style={styles.calcBtnPink} onClick={() => inputDigit('9')}>9</button>
+        <button style={styles.calcBtnOrange} onClick={() => chooseOperator('÷')}>÷</button>
+
+        <button style={styles.calcBtnBlue} onClick={clearEntry}>CE</button>
+        <button style={styles.calcBtnYellow} onClick={() => inputDigit('4')}>4</button>
+        <button style={styles.calcBtnYellow} onClick={() => inputDigit('5')}>5</button>
+        <button style={styles.calcBtnYellow} onClick={() => inputDigit('6')}>6</button>
+        <button style={styles.calcBtnPink} onClick={() => chooseOperator('×')}>×</button>
+
+        <button style={styles.calcBtnOrange} onClick={clearAll}>AC</button>
+        <button style={styles.calcBtnYellow} onClick={() => inputDigit('1')}>1</button>
+        <button style={styles.calcBtnYellow} onClick={() => inputDigit('2')}>2</button>
+        <button style={styles.calcBtnYellow} onClick={() => inputDigit('3')}>3</button>
+        <button style={styles.calcBtnPink} onClick={() => chooseOperator('-')}>−</button>
+
+        <button style={styles.calcBtnPink} onClick={() => inputDigit('0')}>0</button>
+        <button style={styles.calcBtnPink} onClick={() => inputDigit('00')}>00</button>
+        <button style={styles.calcBtnPurple} onClick={inputDot}>.</button>
+        <button style={styles.calcBtnPurple} onClick={equals}>=</button>
+        <button style={styles.calcBtnPink} onClick={() => chooseOperator('+')}>+</button>
+      </div>
+    </div>
+  );
+}
+
 function Field({ label, children }) {
   return (
     <div style={styles.field}>
@@ -1447,6 +1560,21 @@ const styles = {
 
   toast: { position: 'fixed', bottom: 22, left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(145deg, #0B1F5C, #163B9E)', color: '#fff', padding: '12px 20px', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, fontWeight: 600, boxShadow: '0 14px 34px rgba(0,0,0,0.45)', zIndex: 60 },
   toastError: { background: 'linear-gradient(145deg, #B23B26, #8C2C1B)' },
+
+  calcFab: { position: 'fixed', bottom: 24, right: 24, width: 56, height: 56, borderRadius: '50%', border: '1px solid rgba(216,201,163,0.35)', background: 'linear-gradient(155deg, #2A2117, #171209)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 12px 26px rgba(0,0,0,0.5)', zIndex: 70 },
+  calcWrap: { position: 'fixed', bottom: 24, right: 24, width: 280, background: 'linear-gradient(155deg, #241C13, #14100A)', borderRadius: 18, padding: 14, boxShadow: '0 20px 50px rgba(0,0,0,0.55)', border: '1px solid rgba(216,201,163,0.2)', zIndex: 70 },
+  calcHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  calcHeaderTitle: { fontSize: 11.5, letterSpacing: 1.5, color: '#D8C9A3', fontWeight: 700 },
+  calcCloseBtn: { width: 22, height: 22, borderRadius: 7, border: 'none', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  calcDisplay: { background: '#CFE3C6', color: '#1C1710', textAlign: 'right', fontSize: 26, fontWeight: 700, padding: '12px 14px', borderRadius: 10, marginBottom: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  calcGrid: { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 },
+  calcBtnBase: { height: 40, borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, color: '#241C12', cursor: 'pointer' },
+  calcBtnBlue: { height: 40, borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, color: '#241C12', cursor: 'pointer', background: '#8FCFE0' },
+  calcBtnPink: { height: 40, borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, color: '#241C12', cursor: 'pointer', background: '#F1A9C9' },
+  calcBtnPurple: { height: 40, borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, color: '#241C12', cursor: 'pointer', background: '#B79BDE' },
+  calcBtnYellow: { height: 40, borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, color: '#241C12', cursor: 'pointer', background: '#F5D48A' },
+  calcBtnOrange: { height: 40, borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, color: '#241C12', cursor: 'pointer', background: '#F2A86B' },
+  calcBtnGreen: { height: 40, borderRadius: 10, border: 'none', fontWeight: 700, fontSize: 13, color: '#241C12', cursor: 'pointer', background: '#8FDDA8' },
 };
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
