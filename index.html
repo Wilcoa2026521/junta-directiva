@@ -1356,7 +1356,7 @@ function FloatingCalculator() {
   if (!open) {
     return (
       <button style={styles.calcFab} onClick={() => setOpen(true)} title="Abrir calculadora">
-        <Icon name="Calculator" size={24} color="#F0DDB0" />
+        <Icon name="Calculator" size={24} color="#0B1F5C" />
       </button>
     );
   }
@@ -1365,9 +1365,9 @@ function FloatingCalculator() {
     <div style={styles.calcWrap}>
       <div style={styles.calcHeader}>
         <span style={styles.calcHeaderTitle}>
-          <Icon name="Calculator" size={13} color="#D8C9A3" style={{ marginRight: 6, verticalAlign: -2 }} />CALCULADORA
+          <Icon name="Calculator" size={13} color="#0B1F5C" style={{ marginRight: 6, verticalAlign: -2 }} />CALCULADORA
         </span>
-        <button style={styles.calcCloseBtn} onClick={() => setOpen(false)}><Icon name="X" size={13} color="#fff" /></button>
+        <button style={styles.calcCloseBtn} onClick={() => setOpen(false)}><Icon name="X" size={13} color="#5C6D93" /></button>
       </div>
       <div style={styles.calcDisplay}>{display}</div>
       <div style={styles.calcGrid}>
@@ -1561,19 +1561,19 @@ const styles = {
   toast: { position: 'fixed', bottom: 22, left: '50%', transform: 'translateX(-50%)', background: 'linear-gradient(145deg, #0B1F5C, #163B9E)', color: '#fff', padding: '12px 20px', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, fontWeight: 600, boxShadow: '0 14px 34px rgba(0,0,0,0.45)', zIndex: 60 },
   toastError: { background: 'linear-gradient(145deg, #B23B26, #8C2C1B)' },
 
-  calcFab: { position: 'fixed', bottom: 24, right: 24, width: 56, height: 56, borderRadius: '50%', border: '1px solid rgba(216,201,163,0.35)', background: 'linear-gradient(155deg, #332818, #171209)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 12px 26px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)', zIndex: 70 },
-  calcWrap: { position: 'fixed', bottom: 24, right: 24, width: 280, background: 'linear-gradient(165deg, #2C2216, #14100A 60%)', borderRadius: 18, padding: 14, boxShadow: '0 24px 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)', border: '1px solid rgba(216,201,163,0.22)', zIndex: 70 },
+  calcFab: { position: 'fixed', bottom: 24, right: 24, width: 56, height: 56, borderRadius: '50%', border: '1px solid #E4E9F5', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 12px 26px rgba(11,31,92,0.25)', zIndex: 70 },
+  calcWrap: { position: 'fixed', bottom: 24, right: 24, width: 280, background: '#ffffff', borderRadius: 20, padding: 14, boxShadow: '0 24px 60px rgba(11,31,92,0.35)', border: '1px solid #E4E9F5', zIndex: 70 },
   calcHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  calcHeaderTitle: { fontSize: 11.5, letterSpacing: 1.5, color: '#D8C9A3', fontWeight: 700 },
-  calcCloseBtn: { width: 22, height: 22, borderRadius: 7, border: 'none', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
-  calcDisplay: { background: 'linear-gradient(165deg, #DCEFD3, #B9D9AC)', color: '#1C1710', textAlign: 'right', fontSize: 26, fontWeight: 700, padding: '12px 14px', borderRadius: 10, marginBottom: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.25), inset 0 -1px 0 rgba(255,255,255,0.4)' },
+  calcHeaderTitle: { fontSize: 11.5, letterSpacing: 1.5, color: '#0B1F5C', fontWeight: 700 },
+  calcCloseBtn: { width: 22, height: 22, borderRadius: '50%', border: 'none', background: '#F0F3FA', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' },
+  calcDisplay: { background: 'linear-gradient(165deg, #DCEFD3, #B9D9AC)', color: '#1C1710', textAlign: 'right', fontSize: 26, fontWeight: 700, padding: '12px 14px', borderRadius: 12, marginBottom: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.15)' },
   calcGrid: { display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 7 },
-  calcBtnBlue: { height: 40, borderRadius: 11, border: 'none', fontWeight: 700, fontSize: 13, color: '#17303A', cursor: 'pointer', background: 'linear-gradient(160deg, #B4E3F0, #6FB8CC)', boxShadow: '0 3px 0 #4C93A6, 0 5px 10px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.55)' },
-  calcBtnPink: { height: 40, borderRadius: 11, border: 'none', fontWeight: 700, fontSize: 13, color: '#4A1F32', cursor: 'pointer', background: 'linear-gradient(160deg, #F8CBDE, #EA8FB3)', boxShadow: '0 3px 0 #C15E85, 0 5px 10px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.55)' },
-  calcBtnPurple: { height: 40, borderRadius: 11, border: 'none', fontWeight: 700, fontSize: 13, color: '#2E1F45', cursor: 'pointer', background: 'linear-gradient(160deg, #D9C4F2, #A17ADC)', boxShadow: '0 3px 0 #7A54AD, 0 5px 10px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.55)' },
-  calcBtnYellow: { height: 40, borderRadius: 11, border: 'none', fontWeight: 700, fontSize: 13, color: '#4A3A0F', cursor: 'pointer', background: 'linear-gradient(160deg, #FBE9C0, #F0C363)', boxShadow: '0 3px 0 #C99A34, 0 5px 10px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.55)' },
-  calcBtnOrange: { height: 40, borderRadius: 11, border: 'none', fontWeight: 700, fontSize: 13, color: '#4A2A0F', cursor: 'pointer', background: 'linear-gradient(160deg, #F8D2AE, #ED9A54)', boxShadow: '0 3px 0 #C4712A, 0 5px 10px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.55)' },
-  calcBtnGreen: { height: 40, borderRadius: 11, border: 'none', fontWeight: 700, fontSize: 13, color: '#173A26', cursor: 'pointer', background: 'linear-gradient(160deg, #C4EFD3, #74CB93)', boxShadow: '0 3px 0 #4A9F69, 0 5px 10px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.55)' },
+  calcBtnBlue: { height: 44, width: 44, borderRadius: '50%', border: 'none', fontWeight: 700, fontSize: 13, color: '#17303A', cursor: 'pointer', background: 'linear-gradient(160deg, #B4E3F0, #6FB8CC)', boxShadow: '0 3px 8px rgba(76,147,166,0.45)' },
+  calcBtnPink: { height: 44, width: 44, borderRadius: '50%', border: 'none', fontWeight: 700, fontSize: 13, color: '#4A1F32', cursor: 'pointer', background: 'linear-gradient(160deg, #F8CBDE, #EA8FB3)', boxShadow: '0 3px 8px rgba(193,94,133,0.45)' },
+  calcBtnPurple: { height: 44, width: 44, borderRadius: '50%', border: 'none', fontWeight: 700, fontSize: 13, color: '#2E1F45', cursor: 'pointer', background: 'linear-gradient(160deg, #D9C4F2, #A17ADC)', boxShadow: '0 3px 8px rgba(122,84,173,0.45)' },
+  calcBtnYellow: { height: 44, width: 44, borderRadius: '50%', border: 'none', fontWeight: 700, fontSize: 13, color: '#4A3A0F', cursor: 'pointer', background: 'linear-gradient(160deg, #FBE9C0, #F0C363)', boxShadow: '0 3px 8px rgba(201,154,52,0.45)' },
+  calcBtnOrange: { height: 44, width: 44, borderRadius: '50%', border: 'none', fontWeight: 700, fontSize: 13, color: '#4A2A0F', cursor: 'pointer', background: 'linear-gradient(160deg, #F8D2AE, #ED9A54)', boxShadow: '0 3px 8px rgba(196,113,42,0.45)' },
+  calcBtnGreen: { height: 44, width: 44, borderRadius: '50%', border: 'none', fontWeight: 700, fontSize: 13, color: '#173A26', cursor: 'pointer', background: 'linear-gradient(160deg, #C4EFD3, #74CB93)', boxShadow: '0 3px 8px rgba(74,159,105,0.45)' },
 };
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
