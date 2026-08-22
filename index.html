@@ -14,26 +14,54 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
   // ============================================================
   // Reemplazo de window.storage (esa función solo existe dentro
-  // de Claude.ai). Aquí guardamos en el navegador de cada aparato
-  // usando localStorage, con la misma forma de respuesta que
-  // esperaba el código original (res.value, etc).
+  // de Claude.ai). Los datos COMPARTIDOS (shared=true: reservas,
+  // config del salón) se guardan en Firebase Firestore, así todos
+  // los aparatos ven lo mismo. Los datos PERSONALES de este
+  // dispositivo (shared=false: sesión iniciada) se guardan en
+  // localStorage, igual que antes.
   // ============================================================
+  const firebaseConfig = {
+    apiKey: "AIzaSyDFFESd5Dkat78ey5Ee8OOuN0iLvfbyemA",
+    authDomain: "junta-directiva-546d9.firebaseapp.com",
+    projectId: "junta-directiva-546d9",
+    storageBucket: "junta-directiva-546d9.firebasestorage.app",
+    messagingSenderId: "875787295537",
+    appId: "1:875787295537:web:054cf661bc67f376bbae10",
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
   window.storage = {
     async get(key, shared) {
+      if (shared) {
+        const doc = await db.collection('wilcoa').doc(key).get();
+        if (!doc.exists) { throw new Error('not_found'); }
+        return { key, value: doc.data().value, shared: true };
+      }
       const val = localStorage.getItem(key);
       if (val === null) { throw new Error('not_found'); }
-      return { key, value: val, shared: !!shared };
+      return { key, value: val, shared: false };
     },
     async set(key, value, shared) {
+      if (shared) {
+        await db.collection('wilcoa').doc(key).set({ value });
+        return { key, value, shared: true };
+      }
       localStorage.setItem(key, value);
-      return { key, value, shared: !!shared };
+      return { key, value, shared: false };
     },
     async delete(key, shared) {
+      if (shared) {
+        await db.collection('wilcoa').doc(key).delete();
+        return { key, deleted: true, shared: true };
+      }
       localStorage.removeItem(key);
-      return { key, deleted: true, shared: !!shared };
+      return { key, deleted: true, shared: false };
     },
   };
 </script>
