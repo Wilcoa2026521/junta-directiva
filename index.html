@@ -170,7 +170,8 @@ function Icon({ name, size = 16, color = 'currentColor', style }) {
 /* ============ CONFIG Y DATOS BASE ============ */
 const STORAGE_KEY = 'wilcoa:data';
 const SESSION_KEY = 'wilcoa:mySession';
-const REVIEWER_KEY = 'wilcoa:reviewerName';
+const REVIEWER_KEY_ENTREGA = 'wilcoa:reviewerName:entrega';
+const REVIEWER_KEY_RECIBIDO = 'wilcoa:reviewerName:recibido';
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAYS_SHORT = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 
@@ -368,7 +369,8 @@ function AgendaWilcoa() {
   const [showAccessManager, setShowAccessManager] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
   const [checklistRes, setChecklistRes] = useState(null);
-  const [reviewerName, setReviewerName] = useState('');
+  const [reviewerNameEntrega, setReviewerNameEntrega] = useState('');
+  const [reviewerNameRecibido, setReviewerNameRecibido] = useState('');
 
   // Aplica lo que llega del servidor (ya sea de la carga inicial o de un
   // cambio en tiempo real hecho desde otro dispositivo) al estado local,
@@ -436,23 +438,36 @@ function AgendaWilcoa() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
 
-  // Recuerda en este dispositivo el nombre de quien hace el checklist, para no tener que
-  // volver a escribirlo cada vez (no requiere sesión: cualquier persona puede usar el checklist).
+  // Recuerda en este dispositivo el nombre de quien entrega y el de quien
+  // recibe por separado (no siempre es la misma persona), para no tener
+  // que volver a escribirlos cada vez (no requiere sesión: cualquier
+  // persona puede usar el checklist).
   useEffect(() => {
     if (!loaded) return;
     (async () => {
       try {
-        const res = await window.storage.get(REVIEWER_KEY, false);
-        if (res && res.value) setReviewerName(res.value);
+        const res = await window.storage.get(REVIEWER_KEY_ENTREGA, false);
+        if (res && res.value) setReviewerNameEntrega(res.value);
+      } catch (e) {
+        // aún no se ha guardado un nombre en este dispositivo
+      }
+      try {
+        const res = await window.storage.get(REVIEWER_KEY_RECIBIDO, false);
+        if (res && res.value) setReviewerNameRecibido(res.value);
       } catch (e) {
         // aún no se ha guardado un nombre en este dispositivo
       }
     })();
   }, [loaded]);
 
-  const updateReviewerName = (val) => {
-    setReviewerName(val);
-    window.storage.set(REVIEWER_KEY, val, false).catch(() => {});
+  const updateReviewerName = (side, val) => {
+    if (side === 'recibido') {
+      setReviewerNameRecibido(val);
+      window.storage.set(REVIEWER_KEY_RECIBIDO, val, false).catch(() => {});
+    } else {
+      setReviewerNameEntrega(val);
+      window.storage.set(REVIEWER_KEY_ENTREGA, val, false).catch(() => {});
+    }
   };
 
   // Guarda un cambio de forma segura: en vez de subir el estado que hay en
@@ -984,7 +999,8 @@ function AgendaWilcoa() {
       {showChecklist && checklistRes && (
         <ChecklistModal
           res={checklistRes}
-          reviewerName={reviewerName}
+          reviewerNameEntrega={reviewerNameEntrega}
+          reviewerNameRecibido={reviewerNameRecibido}
           onReviewerNameChange={updateReviewerName}
           onClose={() => setShowChecklist(false)}
           onSave={async (checklist) => {
@@ -1339,7 +1355,7 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
         )}
 
         <div style={styles.sectionLabel}><Icon name="Package" size={14} color="#0B1F5C" /> Menaje extra requerido</div>
-        <p style={styles.shareHint}>El salón ya incluye 8 mesas, 65 sillas, 4 ventiladores, cortinas, refrigeradora, cocina y los útiles de limpieza — eso no se marca ni se cobra aparte, ya viene en el alquiler. Acá solo agregás lo que esta persona necesita ADEMÁS de eso (mesas o sillas de más, manteles, equipo de sonido…) y podés ponerle el monto que se le va a cobrar, aparte del alquiler del salón.</p>
+        <p style={styles.shareHint}>El salón ya incluye 8 mesas, 65 sillas, 4 ventiladores, cortinas, refrigeradora, cocina y los útiles de limpieza.</p>
 
         {selectedMenajeDefs.length === 0 && (d.extras.otrosItems || []).length === 0 && (
           <p style={styles.menajeEmptyHint}>Todavía no agregaste ningún insumo extra. Tocá el botón de abajo para elegir de la lista.</p>
@@ -1460,7 +1476,7 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
         <div style={styles.reminderBox}>
           <div style={styles.reminderBoxTitle}><Icon name="AlertCircle" size={14} color="#B4590A" /> Recordatorio para el cliente</div>
           <p style={styles.reminderBoxText}>
-            El cliente debe traer por su cuenta: {CLIENT_SUPPLIED_ITEMS.join(', ')}. Al terminar el evento debe dejar el salón aseado y la basura en el lugar indicado (ambas cosas se revisan en el checklist al recibir).
+            El cliente debe traer por su cuenta: {CLIENT_SUPPLIED_ITEMS.join(', ')}. Al terminar el evento debe dejar el salón aseado y la basura en el lugar indicado (ambas cosas se revisan al recibir el Salón).
           </p>
         </div>
         <Field label="Notas adicionales">
@@ -1703,12 +1719,14 @@ function AccessManagerModal({ config, onClose, onSave }) {
   );
 }
 
-function ChecklistModal({ res, reviewerName, onReviewerNameChange, onClose, onSave }) {
+function ChecklistModal({ res, reviewerNameEntrega, reviewerNameRecibido, onReviewerNameChange, onClose, onSave }) {
   const [data, setData] = useState(() => res.checklist || emptyChecklistForReservation(res));
   const [side, setSide] = useState('entrega');
   const [submitting, setSubmitting] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemQty, setNewItemQty] = useState('');
+
+  const reviewerName = side === 'recibido' ? reviewerNameRecibido : reviewerNameEntrega;
 
   const current = data[side];
   const setCurrent = (patch) => setData(prev => ({ ...prev, [side]: { ...prev[side], ...patch } }));
@@ -1747,10 +1765,6 @@ function ChecklistModal({ res, reviewerName, onReviewerNameChange, onClose, onSa
           <strong>{res.clientName || 'Reserva'}</strong> — {fmtDateHuman(res.date)}. Cualquier persona de la junta puede usar esta lista al entregar y al recibir el salón, sin necesidad de código de acceso.
         </p>
 
-        <Field label="Tu nombre (quien revisa ahora)">
-          <input placeholder="Ej: Juan Pérez" value={reviewerName} onChange={e => onReviewerNameChange(e.target.value)} style={styles.input} />
-        </Field>
-
         <div style={styles.tabs2}>
           <button style={{ ...styles.tabBtn2, ...(side === 'entrega' ? styles.tabBtn2Active : {}) }} onClick={() => setSide('entrega')}>
             <Icon name="Upload" size={13} color={side === 'entrega' ? '#0B1F5C' : 'currentColor'} /> Entrega al cliente
@@ -1759,6 +1773,10 @@ function ChecklistModal({ res, reviewerName, onReviewerNameChange, onClose, onSa
             <Icon name="RefreshCw" size={13} color={side === 'recibido' ? '#0B1F5C' : 'currentColor'} /> Recibido del cliente
           </button>
         </div>
+
+        <Field label={side === 'recibido' ? 'Tu nombre (quien recibe ahora)' : 'Tu nombre (quien entrega ahora)'}>
+          <input placeholder="Ej: Juan Pérez" value={reviewerName} onChange={e => onReviewerNameChange(side, e.target.value)} style={styles.input} />
+        </Field>
 
         {damage && (
           <div style={styles.damageAlert}>
@@ -1824,7 +1842,7 @@ function ChecklistModal({ res, reviewerName, onReviewerNameChange, onClose, onSa
 
         {current.doneBy && (
           <p style={{ fontSize: 11.5, color: '#8FA3C9', margin: '0 0 8px' }}>
-            Última revisión: {current.doneBy}{current.doneAt ? ` — ${new Date(current.doneAt).toLocaleString('es-CR')}` : ''}
+            {side === 'recibido' ? 'Última recepción registrada por' : 'Última entrega registrada por'}: {current.doneBy}{current.doneAt ? ` — ${new Date(current.doneAt).toLocaleString('es-CR')}` : ''}
           </p>
         )}
 
