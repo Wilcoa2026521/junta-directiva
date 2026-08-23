@@ -110,6 +110,13 @@
   Copy: () => <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
   Share2: () => <><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></>,
   Calculator: () => <><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="8.01" y2="10"/><line x1="12" y1="10" x2="12.01" y2="10"/><line x1="16" y1="10" x2="16.01" y2="10"/><line x1="8" y1="14" x2="8.01" y2="14"/><line x1="12" y1="14" x2="12.01" y2="14"/><line x1="16" y1="14" x2="16.01" y2="14"/><line x1="8" y1="18" x2="8.01" y2="18"/><line x1="12" y1="18" x2="12.01" y2="18"/><line x1="16" y1="18" x2="16.01" y2="18"/></>,
+  Fan: () => <>
+    <path d="M12 12c0-3.2 1.6-5.6 3.8-6.8 1.7-.9 3.6.1 3.6 1.8 0 2-1.9 3.5-4 3.9"/>
+    <path d="M12 12c-3.2 0-5.6-1.6-6.8-3.8-.9-1.7.1-3.6 1.8-3.6 2 0 3.5 1.9 3.9 4"/>
+    <path d="M12 12c0 3.2-1.6 5.6-3.8 6.8-1.7.9-3.6-.1-3.6-1.8 0-2 1.9-3.5 4-3.9"/>
+    <path d="M12 12c3.2 0 5.6 1.6 6.8 3.8.9 1.7-.1 3.6-1.8 3.6-2 0-3.5-1.9-3.9-4"/>
+    <circle cx="12" cy="12" r="1.6"/>
+  </>,
 };
 function Icon({ name, size = 16, color = 'currentColor', style }) {
   const shape = ICONS[name];
@@ -129,27 +136,55 @@ const REVIEWER_KEY = 'wilcoa:reviewerName';
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAYS_SHORT = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 
-/* ============ MENAJE / INSUMOS DE LA RESERVA ============ */
-// Estos son los insumos "opcionales" que cada cliente puede o no necesitar.
-// Lo que se marque aquí en la reserva es justo lo que luego aparece en el checklist de entrega/recepción.
+/* ============ INSUMOS INCLUIDOS EN EL ALQUILER ============ */
+// Esto es lo que YA viene incluido en el precio del alquiler del salón, sin costo aparte.
+// Se revisa siempre en el checklist de entrega/recibido (para constatar cantidad y estado),
+// pero NO se marca ni se cobra por reserva: siempre está.
+const INCLUDED_ITEMS_DEF = [
+  { name: 'Mesas', qty: '8' },
+  { name: 'Sillas', qty: '65' },
+  { name: 'Ventiladores', qty: '4' },
+  { name: 'Extintores', qty: '2' },
+  { name: 'Cortinas', qty: '' },
+  { name: 'Refrigeradora', qty: '' },
+  { name: 'Cocina', qty: '' },
+  { name: 'Escobas', qty: '' },
+  { name: 'Palo de piso', qty: '' },
+  { name: 'Recogedores', qty: '' },
+  { name: 'Limpiones', qty: '' },
+];
+// Insumos que siempre están presentes en toda reserva: los "fijos" del edificio (llaves,
+// salón, baños) + todo lo incluido en el alquiler + el cierre de limpieza al devolver.
+const CORE_CHECKLIST_ITEMS = [
+  { name: 'Llaves', qty: '' },
+  { name: 'Salón', qty: '' },
+  { name: 'Baño de mujeres', qty: '' },
+  { name: 'Baño de hombres', qty: '' },
+  ...INCLUDED_ITEMS_DEF,
+  { name: 'Salón aseado (barrido/limpio)', qty: '' },
+  { name: 'Basura retirada', qty: '' },
+];
+
+// Insumos que el cliente debe traer por su cuenta (el salón no los da ni los cobra):
+// se muestran solo como recordatorio al agendar, no forman parte del checklist ni del cobro.
+const CLIENT_SUPPLIED_ITEMS = ['Cilindro de gas', 'Papel higiénico', 'Jabón de manos', 'Lavaplatos (jabón para trastes)'];
+
+/* ============ MENAJE EXTRA (SE COBRA APARTE DEL ALQUILER) ============ */
+// Esto es lo que NO viene incluido en el alquiler del salón: si el cliente lo necesita,
+// se agrega desde el menú y se le puede poner cantidad y el monto que se le va a cobrar
+// por aparte (el alquiler del salón no cambia por esto).
 const MENAJE_ITEMS_DEF = [
-  { key: 'mesas', label: 'Mesas', kind: 'qty', icon: 'Table2' },
-  { key: 'sillas', label: 'Sillas', kind: 'qty', icon: 'Armchair' },
+  { key: 'mesasAdicionales', label: 'Mesas adicionales', hint: 'Más de las 8 que ya incluye el alquiler', kind: 'qty', icon: 'Table2' },
+  { key: 'sillasAdicionales', label: 'Sillas adicionales', hint: 'Más de las 65 que ya incluye el alquiler', kind: 'qty', icon: 'Armchair' },
   { key: 'manteles', label: 'Manteles', kind: 'qty', icon: 'Layers' },
   { key: 'sobremanteles', label: 'Sobre manteles', kind: 'qty', icon: 'Layers' },
-  { key: 'escobas', label: 'Escobas', kind: 'toggle', icon: 'Package' },
-  { key: 'paloDePiso', label: 'Palo de piso', kind: 'toggle', icon: 'Package' },
-  { key: 'felpasPaloDePiso', label: 'Felpas de palo de piso', kind: 'toggle', icon: 'Package' },
-  { key: 'limpiones', label: 'Limpiones', kind: 'toggle', icon: 'Package' },
-  { key: 'cocina', label: 'Cocina', kind: 'toggle', icon: 'Package' },
-  { key: 'extintores', label: 'Extintores', kind: 'toggle', icon: 'AlertCircle' },
+  { key: 'felpasPaloDePiso', label: 'Felpas de palo de piso', kind: 'qty', icon: 'Package' },
   { key: 'microondas', label: 'Microondas', kind: 'toggle', icon: 'Package' },
-  { key: 'refrigeradora', label: 'Refrigeradora', kind: 'toggle', icon: 'Package' },
   { key: 'audio', label: 'Equipo de audio', kind: 'toggle', icon: 'Volume2' },
   { key: 'video', label: 'Equipo de video', kind: 'toggle', icon: 'Package' },
 ];
 const emptyExtras = MENAJE_ITEMS_DEF.reduce((acc, def) => {
-  acc[def.key] = def.kind === 'qty' ? 0 : false;
+  acc[def.key] = def.kind === 'qty' ? { qty: 0, monto: '' } : { on: false, monto: '' };
   return acc;
 }, { otrosItems: [] });
 
@@ -157,19 +192,17 @@ const defaultConfig = { hallName: 'Salón Comunal La Floresta', logoDataUrl: nul
 const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: '', isExempt: false, exemptReason: '', exemptRefValue: '', extras: { ...emptyExtras, otrosItems: [] }, notes: '', checklist: null };
 
 /* ============ CHECKLIST DE INSUMOS (entrega / recibido) ============ */
-// Insumos que siempre están presentes en toda reserva (no dependen del menaje elegido).
-const CORE_CHECKLIST_ITEMS = ['Llaves', 'Salón', 'Baño de mujeres', 'Baño de hombres'];
-
-// Construye la lista de insumos a revisar para ESTA reserva: los fijos + solo el menaje
-// que se marcó como requerido al agendar (así no aparece lo que el cliente no va a usar).
+// Construye la lista de insumos a revisar para ESTA reserva: los fijos/incluidos (siempre
+// los mismos) + solo el menaje extra que se marcó como requerido al agendar.
 function checklistItemDefsForReservation(r) {
   const ex = r.extras || {};
-  const items = CORE_CHECKLIST_ITEMS.map(name => ({ name, qty: '' }));
+  const items = CORE_CHECKLIST_ITEMS.map(d => ({ ...d }));
   MENAJE_ITEMS_DEF.forEach(def => {
     const val = ex[def.key];
     if (def.kind === 'qty') {
-      if (Number(val) > 0) items.push({ name: def.label, qty: String(val) });
-    } else if (val) {
+      const qty = Number(val?.qty) || 0;
+      if (qty > 0) items.push({ name: def.label, qty: String(qty) });
+    } else if (val?.on) {
       items.push({ name: def.label, qty: '' });
     }
   });
@@ -177,6 +210,18 @@ function checklistItemDefsForReservation(r) {
     if (it && it.name) items.push({ name: it.name, qty: it.qty || '' });
   });
   return items;
+}
+// Suma el monto que se le va a cobrar al cliente por el menaje extra (aparte del alquiler).
+function extrasSubtotal(r) {
+  const ex = r?.extras || {};
+  let sum = 0;
+  MENAJE_ITEMS_DEF.forEach(def => {
+    const val = ex[def.key];
+    const isOn = def.kind === 'qty' ? (Number(val?.qty) || 0) > 0 : !!val?.on;
+    if (isOn) sum += Number(val?.monto) || 0;
+  });
+  (ex.otrosItems || []).forEach(it => { sum += Number(it?.monto) || 0; });
+  return sum;
 }
 function emptyChecklistSide(itemDefs) {
   return {
@@ -205,6 +250,7 @@ function paymentStatus(r) {
 const STATUS_COLORS = { debe: '#E23B3B', abono: '#F2B705', pagado: '#1B8A3E', exonerado: '#7B4FE0' };
 const STATUS_LABELS = { debe: 'Debe todo', abono: 'Abonó', pagado: 'Pagado', exonerado: 'Uso social (exonerado)' };
 const STATUS_RANK = { debe: 0, abono: 1, pagado: 2, exonerado: 3 };
+
 
 /* ============ ROLES Y PERMISOS ============ */
 const ROLES = { VIEWER: 'viewer', EDITOR: 'editor', ADMIN: 'admin' };
@@ -924,14 +970,16 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, showDate, defaultOp
   MENAJE_ITEMS_DEF.forEach(def => {
     const val = r.extras?.[def.key];
     if (def.kind === 'qty') {
-      if (Number(val) > 0) extrasList.push({ icon: def.icon, label: `${val} ${def.label.toLowerCase()}` });
-    } else if (val) {
-      extrasList.push({ icon: def.icon, label: def.label });
+      const qty = Number(val?.qty) || 0;
+      if (qty > 0) extrasList.push({ icon: def.icon, label: `${qty} ${def.label.toLowerCase()}`, monto: Number(val?.monto) || 0 });
+    } else if (val?.on) {
+      extrasList.push({ icon: def.icon, label: def.label, monto: Number(val?.monto) || 0 });
     }
   });
   (r.extras?.otrosItems || []).forEach(it => {
-    if (it && it.name) extrasList.push({ icon: 'Package', label: it.qty ? `${it.name} (${it.qty})` : it.name });
+    if (it && it.name) extrasList.push({ icon: 'Package', label: it.qty ? `${it.name} (${it.qty})` : it.name, monto: Number(it.monto) || 0 });
   });
+  const extrasTotal = extrasSubtotal(r);
 
   return (
     <div style={styles.resCard}>
@@ -996,8 +1044,15 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, showDate, defaultOp
           {extrasList.length > 0 && (
             <div style={styles.extrasRow}>
               {extrasList.map((ex, i) => (
-                <span key={i} style={styles.extraChip}><Icon name={ex.icon} size={12} color="#1D6E92" /> {ex.label}</span>
+                <span key={i} style={styles.extraChip}>
+                  <Icon name={ex.icon} size={12} color="#1D6E92" /> {ex.label}{ex.monto > 0 ? ` · ${fmtMoney(ex.monto)}` : ''}
+                </span>
               ))}
+            </div>
+          )}
+          {extrasTotal > 0 && (
+            <div style={styles.extrasSubtotalRow}>
+              <Icon name="DollarSign" size={12} color="#8A6D00" /> Menaje extra (aparte del alquiler): <strong>{fmtMoney(extrasTotal)}</strong>
             </div>
           )}
 
@@ -1064,6 +1119,7 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
   const [submitting, setSubmitting] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemQty, setNewItemQty] = useState('');
+  const [newItemMonto, setNewItemMonto] = useState('');
   const [menajeMenuOpen, setMenajeMenuOpen] = useState(false);
   const [menajeSearch, setMenajeSearch] = useState('');
   const set = (patch) => setD(prev => ({ ...prev, ...patch }));
@@ -1071,35 +1127,44 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
   const addOtroItem = () => {
     const name = newItemName.trim();
     if (!name) return;
-    setExtra({ otrosItems: [...(d.extras.otrosItems || []), { id: uid(), name, qty: newItemQty.trim() }] });
+    setExtra({ otrosItems: [...(d.extras.otrosItems || []), { id: uid(), name, qty: newItemQty.trim(), monto: newItemMonto.trim() }] });
     setNewItemName('');
     setNewItemQty('');
+    setNewItemMonto('');
   };
   const removeOtroItem = (id) => {
     setExtra({ otrosItems: (d.extras.otrosItems || []).filter(it => it.id !== id) });
   };
+  const updateOtroItemMonto = (id, monto) => {
+    setExtra({ otrosItems: (d.extras.otrosItems || []).map(it => it.id === id ? { ...it, monto } : it) });
+  };
 
-  // Insumo "seleccionado" = ya lo va a necesitar este cliente (por eso sale del menú
-  // y aparece marcado abajo, que es justo lo que luego arma el checklist de entrega/recibido).
-  const isMenajeSelected = (def) => def.kind === 'qty' ? Number(d.extras[def.key]) > 0 : !!d.extras[def.key];
+  // Insumo "seleccionado" = este cliente lo va a necesitar además del alquiler (por eso sale
+  // del menú y aparece marcado abajo, que es justo lo que luego arma el checklist y lo que
+  // se le cobra aparte del alquiler del salón).
+  const isMenajeSelected = (def) => def.kind === 'qty' ? Number(d.extras[def.key]?.qty) > 0 : !!d.extras[def.key]?.on;
   const selectedMenajeDefs = MENAJE_ITEMS_DEF.filter(isMenajeSelected);
   const availableMenajeDefs = MENAJE_ITEMS_DEF.filter(def => !isMenajeSelected(def) &&
     def.label.toLowerCase().includes(menajeSearch.trim().toLowerCase()));
   const addMenajeFromMenu = (def) => {
-    setExtra({ [def.key]: def.kind === 'qty' ? 1 : true });
+    setExtra({ [def.key]: def.kind === 'qty' ? { qty: 1, monto: '' } : { on: true, monto: '' } });
   };
   const removeMenajeItem = (def) => {
-    setExtra({ [def.key]: def.kind === 'qty' ? 0 : false });
+    setExtra({ [def.key]: def.kind === 'qty' ? { qty: 0, monto: '' } : { on: false, monto: '' } });
   };
   const bumpMenajeQty = (def, delta) => {
-    const current = Number(d.extras[def.key]) || 0;
+    const current = Number(d.extras[def.key]?.qty) || 0;
     const next = current + delta;
     if (next <= 0) { removeMenajeItem(def); return; }
-    setExtra({ [def.key]: next });
+    setExtra({ [def.key]: { ...d.extras[def.key], qty: next } });
+  };
+  const updateMenajeMonto = (def, monto) => {
+    setExtra({ [def.key]: { ...d.extras[def.key], monto } });
   };
   const addOtroItemFromMenu = () => {
     addOtroItem();
   };
+  const menajeExtrasTotal = extrasSubtotal(d);
 
   const canSave = d.date && d.clientName.trim().length > 0 && (!d.isExempt || d.exemptReason.trim().length > 0);
 
@@ -1193,7 +1258,7 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
         )}
 
         <div style={styles.sectionLabel}><Icon name="Package" size={14} color="#0B1F5C" /> Menaje extra requerido</div>
-        <p style={styles.shareHint}>El salón, las llaves y los baños ya están incluidos siempre, no hace falta marcarlos. Aquí solo agregás el menaje extra que esta persona va a necesitar; eso es justo lo que va a aparecer luego en el checklist de entrega y recepción.</p>
+        <p style={styles.shareHint}>El salón ya incluye 8 mesas, 65 sillas, 4 ventiladores, cortinas, refrigeradora, cocina y los útiles de limpieza — eso no se marca ni se cobra aparte, ya viene en el alquiler. Acá solo agregás lo que esta persona necesita ADEMÁS de eso (mesas o sillas de más, manteles, equipo de sonido…) y podés ponerle el monto que se le va a cobrar, aparte del alquiler del salón.</p>
 
         {selectedMenajeDefs.length === 0 && (d.extras.otrosItems || []).length === 0 && (
           <p style={styles.menajeEmptyHint}>Todavía no agregaste ningún insumo extra. Tocá el botón de abajo para elegir de la lista.</p>
@@ -1203,25 +1268,53 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
           <div style={styles.selectedMenajeList}>
             {selectedMenajeDefs.map(def => (
               <div key={def.key} style={styles.selectedMenajeChip}>
-                <Icon name={def.icon} size={14} color="#0B1F5C" />
-                <span style={styles.selectedMenajeLabel}>{def.label}</span>
-                {def.kind === 'qty' && (
-                  <div style={styles.qtyStepper}>
-                    <button type="button" className="wilcoa-qty-btn" style={styles.qtyStepperBtn} onClick={() => bumpMenajeQty(def, -1)}>–</button>
-                    <span style={styles.qtyStepperValue}>{d.extras[def.key]}</span>
-                    <button type="button" className="wilcoa-qty-btn" style={styles.qtyStepperBtn} onClick={() => bumpMenajeQty(def, 1)}>+</button>
-                  </div>
-                )}
-                <button type="button" style={styles.otroItemRemove} onClick={() => removeMenajeItem(def)}><Icon name="X" size={11} color="#5C6D93" /></button>
+                <div style={styles.selectedMenajeChipTop}>
+                  <Icon name={def.icon} size={14} color="#0B1F5C" />
+                  <span style={styles.selectedMenajeLabel}>{def.label}</span>
+                  {def.kind === 'qty' && (
+                    <div style={styles.qtyStepper}>
+                      <button type="button" className="wilcoa-qty-btn" style={styles.qtyStepperBtn} onClick={() => bumpMenajeQty(def, -1)}>–</button>
+                      <span style={styles.qtyStepperValue}>{d.extras[def.key]?.qty || 0}</span>
+                      <button type="button" className="wilcoa-qty-btn" style={styles.qtyStepperBtn} onClick={() => bumpMenajeQty(def, 1)}>+</button>
+                    </div>
+                  )}
+                  <button type="button" style={styles.otroItemRemove} onClick={() => removeMenajeItem(def)}><Icon name="X" size={11} color="#5C6D93" /></button>
+                </div>
+                <label style={styles.montoInline}>
+                  <span>₡</span>
+                  <input
+                    type="number" min="0" placeholder="Monto a cobrar"
+                    value={d.extras[def.key]?.monto ?? ''}
+                    onChange={e => updateMenajeMonto(def, e.target.value)}
+                    style={styles.montoInlineInput}
+                  />
+                </label>
               </div>
             ))}
             {(d.extras.otrosItems || []).map(it => (
               <div key={it.id} style={styles.selectedMenajeChip}>
-                <Icon name="Package" size={14} color="#0B1F5C" />
-                <span style={styles.selectedMenajeLabel}>{it.name}{it.qty ? ` (${it.qty})` : ''}</span>
-                <button type="button" style={styles.otroItemRemove} onClick={() => removeOtroItem(it.id)}><Icon name="X" size={11} color="#5C6D93" /></button>
+                <div style={styles.selectedMenajeChipTop}>
+                  <Icon name="Package" size={14} color="#0B1F5C" />
+                  <span style={styles.selectedMenajeLabel}>{it.name}{it.qty ? ` (${it.qty})` : ''}</span>
+                  <button type="button" style={styles.otroItemRemove} onClick={() => removeOtroItem(it.id)}><Icon name="X" size={11} color="#5C6D93" /></button>
+                </div>
+                <label style={styles.montoInline}>
+                  <span>₡</span>
+                  <input
+                    type="number" min="0" placeholder="Monto a cobrar"
+                    value={it.monto ?? ''}
+                    onChange={e => updateOtroItemMonto(it.id, e.target.value)}
+                    style={styles.montoInlineInput}
+                  />
+                </label>
               </div>
             ))}
+          </div>
+        )}
+
+        {menajeExtrasTotal > 0 && (
+          <div style={styles.menajeExtrasTotalRow}>
+            <Icon name="DollarSign" size={13} color="#8A6D00" /> Subtotal de menaje extra (aparte del alquiler): <strong>{fmtMoney(menajeExtrasTotal)}</strong>
           </div>
         )}
 
@@ -1261,7 +1354,10 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
                       onClick={() => addMenajeFromMenu(def)}
                     >
                       <Icon name={def.icon} size={15} color="#213157" />
-                      <span style={{ flex: 1, textAlign: 'left' }}>{def.label}</span>
+                      <span style={{ flex: 1, textAlign: 'left' }}>
+                        {def.label}
+                        {def.hint && <span style={styles.menajeMenuItemHint}>{def.hint}</span>}
+                      </span>
                       <Icon name="Plus" size={14} color="#1E9BD6" />
                     </button>
                   ))}
@@ -1271,12 +1367,20 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
                   <div style={{ display: 'flex', gap: 6 }}>
                     <input placeholder="Nombre del insumo" value={newItemName} onChange={e => setNewItemName(e.target.value)} style={{ ...styles.input, flex: 2, marginBottom: 0 }} />
                     <input placeholder="Cant." value={newItemQty} onChange={e => setNewItemQty(e.target.value)} style={{ ...styles.input, flex: 1, marginBottom: 0 }} />
+                    <input placeholder="₡ Monto" type="number" min="0" value={newItemMonto} onChange={e => setNewItemMonto(e.target.value)} style={{ ...styles.input, flex: 1, marginBottom: 0 }} />
                     <button type="button" style={styles.addItemBtn} onClick={addOtroItemFromMenu}><Icon name="Plus" size={16} color="#fff" /></button>
                   </div>
                 </div>
               </div>
             </>
           )}
+        </div>
+
+        <div style={styles.reminderBox}>
+          <div style={styles.reminderBoxTitle}><Icon name="AlertCircle" size={14} color="#B4590A" /> Recordatorio para el cliente</div>
+          <p style={styles.reminderBoxText}>
+            El cliente debe traer por su cuenta: {CLIENT_SUPPLIED_ITEMS.join(', ')}. Al terminar el evento debe dejar el salón aseado y la basura en el lugar indicado (ambas cosas se revisan en el checklist al recibir).
+          </p>
         </div>
         <Field label="Notas adicionales">
           <textarea placeholder="Detalles del evento, horario, condiciones especiales…" value={d.notes} onChange={e => set({ notes: e.target.value })} style={{ ...styles.input, minHeight: 64, resize: 'vertical' }} />
@@ -1872,6 +1976,7 @@ const styles = {
   resPhone: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#8FA3C9', marginTop: 2 },
   statusPill: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 700, padding: '5px 10px', borderRadius: 999, whiteSpace: 'nowrap' },
   depositRow: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8A6D00', background: 'rgba(242,183,5,0.14)', padding: '7px 10px', borderRadius: 10, marginBottom: 8, fontWeight: 500 },
+  extrasSubtotalRow: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8A6D00', background: 'rgba(242,183,5,0.14)', padding: '7px 10px', borderRadius: 10, marginBottom: 8, fontWeight: 500 },
   exemptBox: { display: 'flex', gap: 8, background: 'rgba(123,79,224,0.1)', color: '#3D2270', padding: '10px 12px', borderRadius: 12, marginBottom: 10, fontSize: 12.5, lineHeight: 1.5 },
 
   moneyRow: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, background: '#F5F8FF', borderRadius: 12, padding: '10px 12px', marginBottom: 10 },
@@ -1932,20 +2037,28 @@ const styles = {
   otroItemRemove: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%', border: 'none', background: '#fff', cursor: 'pointer', flexShrink: 0 },
   menajeEmptyHint: { fontSize: 12.5, color: '#8FA3C9', background: 'rgba(11,31,92,0.04)', border: '1px dashed #D7E0F2', borderRadius: 10, padding: '10px 12px', margin: '0 0 12px' },
   selectedMenajeList: { display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  selectedMenajeChip: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, background: 'rgba(30,155,214,0.09)', border: '1px solid rgba(30,155,214,0.25)', color: '#0B1F5C', padding: '6px 8px 6px 10px', borderRadius: 999, fontWeight: 600 },
-  selectedMenajeLabel: { whiteSpace: 'nowrap' },
+  selectedMenajeChip: { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12.5, background: 'rgba(30,155,214,0.09)', border: '1px solid rgba(30,155,214,0.25)', color: '#0B1F5C', padding: '8px 10px', borderRadius: 14, fontWeight: 600 },
+  selectedMenajeChipTop: { display: 'flex', alignItems: 'center', gap: 7 },
+  selectedMenajeLabel: { whiteSpace: 'nowrap', flex: 1 },
   qtyStepper: { display: 'flex', alignItems: 'center', gap: 4, background: '#fff', borderRadius: 999, padding: '2px 4px' },
   qtyStepperBtn: { width: 18, height: 18, lineHeight: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: '50%', background: 'rgba(11,31,92,0.08)', color: '#0B1F5C', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 0 },
   qtyStepperValue: { minWidth: 16, textAlign: 'center', fontSize: 12.5, fontWeight: 700 },
+  montoInline: { display: 'flex', alignItems: 'center', gap: 4, background: '#fff', borderRadius: 8, padding: '3px 8px', fontWeight: 500, fontSize: 12, color: '#8A6D00' },
+  montoInlineInput: { flex: 1, border: 'none', outline: 'none', fontSize: 12.5, fontWeight: 600, color: '#213157', background: 'transparent', padding: '3px 0', minWidth: 0 },
+  menajeExtrasTotalRow: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#8A6D00', background: 'rgba(242,183,5,0.14)', padding: '8px 12px', borderRadius: 10, marginBottom: 14, fontWeight: 600 },
   menajeMenuBtn: { display: 'inline-flex', alignItems: 'center', gap: 7, background: 'linear-gradient(145deg, #47C3EF, #1E9BD6)', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 18 },
   menajeMenuBackdrop: { position: 'fixed', inset: 0, zIndex: 30, background: 'transparent' },
   menajeMenuPanel: { position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, maxWidth: 360, zIndex: 31, background: '#fff', border: '1px solid #E3E9F5', borderRadius: 14, boxShadow: '0 12px 32px rgba(11,31,92,0.18)', padding: 10, display: 'flex', flexDirection: 'column', gap: 8 },
   menajeMenuSearch: { width: '100%', boxSizing: 'border-box', border: '1px solid #E3E9F5', borderRadius: 9, padding: '8px 10px', fontSize: 13, outline: 'none' },
   menajeMenuItems: { maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 },
   menajeMenuItem: { display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', background: 'transparent', border: 'none', borderRadius: 8, padding: '8px 8px', fontSize: 13, color: '#213157', fontWeight: 500, cursor: 'pointer' },
+  menajeMenuItemHint: { display: 'block', fontSize: 10.5, color: '#8FA3C9', fontWeight: 500, marginTop: 1 },
   menajeMenuEmpty: { fontSize: 12, color: '#8FA3C9', padding: '6px 4px', margin: 0, lineHeight: 1.5 },
   menajeMenuFooter: { borderTop: '1px solid #EEF1F8', paddingTop: 8, marginTop: 2 },
   menajeMenuFooterLabel: { fontSize: 11, color: '#8FA3C9', margin: '0 0 6px', fontWeight: 600 },
+  reminderBox: { background: 'rgba(255,153,51,0.1)', border: '1px solid rgba(255,153,51,0.3)', borderRadius: 12, padding: '10px 12px', margin: '4px 0 18px' },
+  reminderBoxTitle: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#B4590A', marginBottom: 4 },
+  reminderBoxText: { fontSize: 12, color: '#7A4A12', lineHeight: 1.5, margin: 0 },
 
   modalActions: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18, paddingTop: 16, borderTop: '1px solid #EEF1F8' },
   shareHint: { fontSize: 12, color: '#8FA3C9', margin: '2px 0 16px', lineHeight: 1.5 },
