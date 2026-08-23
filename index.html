@@ -1726,7 +1726,26 @@ function ChecklistModal({ res, reviewerNameEntrega, reviewerNameRecibido, onRevi
   const [newItemName, setNewItemName] = useState('');
   const [newItemQty, setNewItemQty] = useState('');
 
-  const reviewerName = side === 'recibido' ? reviewerNameRecibido : reviewerNameEntrega;
+  // La última entrega/recepción ya guardada (y sincronizada desde
+  // cualquier dispositivo) se guarda aparte, sin tocar, para poder
+  // mostrarla abajo aunque alguien esté escribiendo un nombre nuevo
+  // encima sin haber guardado todavía.
+  const savedEntrega = res.checklist ? res.checklist.entrega : null;
+  const savedRecibido = res.checklist ? res.checklist.recibido : null;
+  const savedSide = side === 'recibido' ? savedRecibido : savedEntrega;
+
+  // Si esta reserva ya tiene un nombre guardado para este lado (por
+  // ejemplo, Wilmar ya entregó desde su celular), se usa ese nombre
+  // sin importar desde qué dispositivo se esté mirando. Si todavía
+  // nadie lo hizo, se sugiere el último nombre que se usó en ESTE
+  // dispositivo, solo como punto de partida cómodo para no re-tipear.
+  useEffect(() => {
+    setData(prev => ({
+      entrega: prev.entrega.doneBy ? prev.entrega : { ...prev.entrega, doneBy: reviewerNameEntrega },
+      recibido: prev.recibido.doneBy ? prev.recibido : { ...prev.recibido, doneBy: reviewerNameRecibido },
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const current = data[side];
   const setCurrent = (patch) => setData(prev => ({ ...prev, [side]: { ...prev[side], ...patch } }));
@@ -1749,7 +1768,7 @@ function ChecklistModal({ res, reviewerNameEntrega, reviewerNameRecibido, onRevi
   const handleSave = async () => {
     if (submitting) return;
     setSubmitting(true);
-    const stamped = { ...current, doneBy: reviewerName.trim() || current.doneBy, doneAt: new Date().toISOString() };
+    const stamped = { ...current, doneBy: current.doneBy.trim(), doneAt: new Date().toISOString() };
     await onSave({ ...data, [side]: stamped });
     setSubmitting(false);
   };
@@ -1775,7 +1794,12 @@ function ChecklistModal({ res, reviewerNameEntrega, reviewerNameRecibido, onRevi
         </div>
 
         <Field label={side === 'recibido' ? 'Tu nombre (quien recibe ahora)' : 'Tu nombre (quien entrega ahora)'}>
-          <input placeholder="Ej: Juan Pérez" value={reviewerName} onChange={e => onReviewerNameChange(side, e.target.value)} style={styles.input} />
+          <input
+            placeholder="Ej: Juan Pérez"
+            value={current.doneBy}
+            onChange={e => { setCurrent({ doneBy: e.target.value }); onReviewerNameChange(side, e.target.value); }}
+            style={styles.input}
+          />
         </Field>
 
         {damage && (
@@ -1840,9 +1864,9 @@ function ChecklistModal({ res, reviewerNameEntrega, reviewerNameRecibido, onRevi
           />
         </Field>
 
-        {current.doneBy && (
+        {savedSide && savedSide.doneBy && (
           <p style={{ fontSize: 11.5, color: '#8FA3C9', margin: '0 0 8px' }}>
-            {side === 'recibido' ? 'Última recepción registrada por' : 'Última entrega registrada por'}: {current.doneBy}{current.doneAt ? ` — ${new Date(current.doneAt).toLocaleString('es-CR')}` : ''}
+            {side === 'recibido' ? 'Última recepción registrada por' : 'Última entrega registrada por'}: {savedSide.doneBy}{savedSide.doneAt ? ` — ${new Date(savedSide.doneAt).toLocaleString('es-CR')}` : ''}
           </p>
         )}
 
