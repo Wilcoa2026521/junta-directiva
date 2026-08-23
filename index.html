@@ -573,10 +573,20 @@ function AgendaWilcoa() {
     setShowChecklist(true);
   };
 
-  const saveChecklist = async (resId, checklist) => {
+  const saveChecklist = async (resId, side, stampedSide) => {
+    // Importante: solo se reemplaza el lado que se acaba de guardar
+    // (entrega o recibido), usando siempre la versión más reciente que
+    // haya en el servidor para el checklist de esta reserva. Así, si
+    // alguien guardó "recibido" desde otro celular mientras vos tenías
+    // abierta la pestaña de "entrega", tu guardado no le borra el
+    // trabajo a esa otra persona.
     const result = await persistPatch(cur => ({
       ...cur,
-      reservations: cur.reservations.map(r => r.id === resId ? { ...r, checklist } : r),
+      reservations: cur.reservations.map(r => {
+        if (r.id !== resId) return r;
+        const baseChecklist = r.checklist || emptyChecklistForReservation(r);
+        return { ...r, checklist: { ...baseChecklist, [side]: stampedSide } };
+      }),
     }));
     if (result) {
       setReservations(result.reservations);
@@ -1003,8 +1013,8 @@ function AgendaWilcoa() {
           reviewerNameRecibido={reviewerNameRecibido}
           onReviewerNameChange={updateReviewerName}
           onClose={() => setShowChecklist(false)}
-          onSave={async (checklist) => {
-            const ok = await saveChecklist(checklistRes.id, checklist);
+          onSave={async (side, stampedSide) => {
+            const ok = await saveChecklist(checklistRes.id, side, stampedSide);
             if (ok) setShowChecklist(false);
           }}
         />
@@ -1769,7 +1779,7 @@ function ChecklistModal({ res, reviewerNameEntrega, reviewerNameRecibido, onRevi
     if (submitting) return;
     setSubmitting(true);
     const stamped = { ...current, doneBy: current.doneBy.trim(), doneAt: new Date().toISOString() };
-    await onSave({ ...data, [side]: stamped });
+    await onSave(side, stamped);
     setSubmitting(false);
   };
 
