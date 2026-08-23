@@ -64,6 +64,44 @@
       return { key, deleted: true, shared: false };
     },
   };
+
+  // ============================================================
+  // Guardado seguro para datos compartidos (evita que un
+  // dispositivo con datos desactualizados pise lo que otro
+  // acaba de guardar, por ejemplo un checklist guardado desde
+  // un celular mientras el administrador tenía la app abierta
+  // en otra computadora). En vez de subir directamente lo que
+  // hay en memoria del dispositivo, storagePatch lee dentro de
+  // una transacción la versión más reciente que existe en el
+  // servidor, le aplica SOLO el cambio puntual (a través de la
+  // función "updater") y recién ahí lo guarda. Si dos personas
+  // guardan casi al mismo tiempo, Firestore reintenta la
+  // transacción automáticamente para que ambos cambios queden
+  // reflejados, en vez de que uno borre al otro.
+  // ============================================================
+  window.storagePatch = async function (key, updater) {
+    const ref = db.collection('wilcoa').doc(key);
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const current = snap.exists ? JSON.parse(snap.data().value) : null;
+      const next = updater(current);
+      tx.set(ref, { value: JSON.stringify(next) });
+      return next;
+    });
+    return result;
+  };
+
+  // Avisa en tiempo real (sin esperar a los 15 segundos de
+  // sondeo ni a tocar "Actualizar") cuando cambian los datos
+  // compartidos, sin importar desde qué dispositivo se guardaron.
+  window.storageWatch = function (key, onChange, onError) {
+    return db.collection('wilcoa').doc(key).onSnapshot((doc) => {
+      if (!doc.exists) return;
+      try {
+        onChange(JSON.parse(doc.data().value));
+      } catch (e) { /* documento con datos corruptos, se ignora este evento */ }
+    }, (err) => { if (onError) onError(err); });
+  };
 </script>
 <style>
   html, body { margin:0; padding:0; }
@@ -332,17 +370,26 @@ function AgendaWilcoa() {
   const [checklistRes, setChecklistRes] = useState(null);
   const [reviewerName, setReviewerName] = useState('');
 
+  // Aplica lo que llega del servidor (ya sea de la carga inicial o de un
+  // cambio en tiempo real hecho desde otro dispositivo) al estado local,
+  // salvo que la persona esté en medio de escribir un formulario: en ese
+  // caso se espera a que termine para no interrumpirle lo que está tipeando.
+  const applyRemoteData = (parsed) => {
+    if (!parsed) return;
+    setConfig({ ...defaultConfig, ...(parsed.config || {}) });
+    setReservations(Array.isArray(parsed.reservations) ? parsed.reservations : []);
+    setClients(Array.isArray(parsed.clients) ? parsed.clients : []);
+    setLastSync(new Date());
+  };
+
+  // Carga manual/forzada, usada por el botón "Actualizar" (por si la
+  // conexión en tiempo real se cortó momentáneamente) y como respaldo
+  // inicial mientras se conecta el listener en tiempo real.
   const loadFromStorage = async (silent) => {
     if (!silent) setRefreshing(true);
     try {
       const res = await window.storage.get(STORAGE_KEY, true);
-      if (res && res.value) {
-        const parsed = JSON.parse(res.value);
-        setConfig({ ...defaultConfig, ...(parsed.config || {}) });
-        setReservations(Array.isArray(parsed.reservations) ? parsed.reservations : []);
-        setClients(Array.isArray(parsed.clients) ? parsed.clients : []);
-      }
-      setLastSync(new Date());
+      if (res && res.value) applyRemoteData(JSON.parse(res.value));
     } catch (e) {
       // aún no hay datos guardados, se mantienen los valores por defecto
     } finally {
@@ -351,7 +398,24 @@ function AgendaWilcoa() {
     }
   };
 
-  useEffect(() => { loadFromStorage(true); }, []);
+  // Escucha en tiempo real: en cuanto CUALQUIER dispositivo guarda algo
+  // (una reserva, un checklist, un cliente, la configuración del salón),
+  // todos los demás dispositivos abiertos lo reciben al instante, sin
+  // esperar 15 segundos ni tener que tocar "Actualizar".
+  useEffect(() => {
+    loadFromStorage(true); // primer dato mientras se conecta el listener
+    const unsubscribe = window.storageWatch(
+      STORAGE_KEY,
+      (parsed) => {
+        if (showForm || editingHallName) return; // no interrumpir mientras se escribe un formulario
+        applyRemoteData(parsed);
+        setLoaded(true);
+      },
+      () => { /* si falla la conexión en tiempo real, el botón Actualizar sigue funcionando */ }
+    );
+    return () => unsubscribe && unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showForm, editingHallName]);
 
   // Recuerda el rol de esta persona en este dispositivo (almacenamiento personal, no compartido),
   // así no tiene que volver a escribir su código cada vez que abre el link.
@@ -391,21 +455,29 @@ function AgendaWilcoa() {
     window.storage.set(REVIEWER_KEY, val, false).catch(() => {});
   };
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!showForm && !editingHallName) loadFromStorage(true);
-    }, 15000);
-    return () => clearInterval(interval);
-  }, [showForm, editingHallName]);
-
-  const persist = async (nextConfig, nextRes, nextClients) => {
+  // Guarda un cambio de forma segura: en vez de subir el estado que hay en
+  // memoria de este dispositivo (que puede estar desactualizado si otra
+  // persona guardó algo hace unos segundos), "updater" recibe la versión
+  // más reciente que existe en el servidor y devuelve solo el cambio
+  // puntual que hay que aplicarle. Así nunca se pisa el trabajo de otro
+  // dispositivo, aunque dos personas guarden casi al mismo tiempo.
+  const persistPatch = async (updater) => {
     setSaving(true);
     try {
-      await window.storage.set(STORAGE_KEY, JSON.stringify({ config: nextConfig, reservations: nextRes, clients: nextClients }), true);
-      return true;
+      const next = await window.storagePatch(STORAGE_KEY, (current) => {
+        const base = current
+          ? {
+              config: { ...defaultConfig, ...(current.config || {}) },
+              reservations: Array.isArray(current.reservations) ? current.reservations : [],
+              clients: Array.isArray(current.clients) ? current.clients : [],
+            }
+          : { config: defaultConfig, reservations: [], clients: [] };
+        return updater(base);
+      });
+      return next;
     } catch (e) {
       showToast('No se pudo guardar. Revisa tu conexión e intenta de nuevo sin cerrar la app.', 'error');
-      return false;
+      return null;
     } finally {
       setSaving(false);
     }
@@ -425,54 +497,60 @@ function AgendaWilcoa() {
   };
 
   const updateConfig = async (patch) => {
-    const next = { ...config, ...patch };
-    const ok = await persist(next, reservations, clients);
-    if (ok) setConfig(next);
-    return ok;
+    const result = await persistPatch(cur => ({ ...cur, config: { ...cur.config, ...patch } }));
+    if (result) {
+      setConfig(result.config);
+      setReservations(result.reservations);
+      setClients(result.clients);
+    }
+    return !!result;
   };
 
   const saveReservation = async (data) => {
-    let next;
-    if (data.id) {
-      next = reservations.map(r => r.id === data.id ? data : r);
-    } else {
-      next = [...reservations, { ...data, id: uid() }];
-    }
-    next.sort((a, b) => a.date.localeCompare(b.date));
-
-    // Guarda o actualiza automáticamente el cliente en el directorio de Clientes
-    let nextClients = clients;
     const name = (data.clientName || '').trim();
-    if (name) {
-      const existing = clients.find(c => c.name.toLowerCase() === name.toLowerCase());
-      const phone = (data.phone || '').trim();
-      if (existing) {
-        if (phone && existing.phone !== phone) {
-          nextClients = clients.map(c => c.id === existing.id ? { ...c, phone } : c);
-        }
-      } else {
-        nextClients = [...clients, { id: uid(), name, phone }].sort((a, b) => a.name.localeCompare(b.name));
-      }
-    }
+    const phone = (data.phone || '').trim();
 
-    const ok = await persist(config, next, nextClients);
-    if (ok) {
-      setReservations(next);
-      if (nextClients !== clients) setClients(nextClients);
+    const result = await persistPatch(cur => {
+      let nextRes;
+      if (data.id) {
+        nextRes = cur.reservations.map(r => r.id === data.id ? data : r);
+      } else {
+        nextRes = [...cur.reservations, { ...data, id: uid() }];
+      }
+      nextRes.sort((a, b) => a.date.localeCompare(b.date));
+
+      // Guarda o actualiza automáticamente el cliente en el directorio de Clientes
+      let nextClients = cur.clients;
+      if (name) {
+        const existing = cur.clients.find(c => c.name.toLowerCase() === name.toLowerCase());
+        if (existing) {
+          if (phone && existing.phone !== phone) {
+            nextClients = cur.clients.map(c => c.id === existing.id ? { ...c, phone } : c);
+          }
+        } else {
+          nextClients = [...cur.clients, { id: uid(), name, phone }].sort((a, b) => a.name.localeCompare(b.name));
+        }
+      }
+      return { ...cur, reservations: nextRes, clients: nextClients };
+    });
+
+    if (result) {
+      setReservations(result.reservations);
+      setClients(result.clients);
+      setConfig(result.config);
       showToast(data.id ? 'Reserva actualizada' : 'Reserva agregada');
     }
-    return ok;
+    return !!result;
   };
 
   const deleteReservation = async (id) => {
     if (!canDelete(role)) return false;
-    const next = reservations.filter(r => r.id !== id);
-    const ok = await persist(config, next, clients);
-    if (ok) {
-      setReservations(next);
+    const result = await persistPatch(cur => ({ ...cur, reservations: cur.reservations.filter(r => r.id !== id) }));
+    if (result) {
+      setReservations(result.reservations);
       showToast('Reserva eliminada', 'ok');
     }
-    return ok;
+    return !!result;
   };
 
   const openChecklist = (r) => {
@@ -481,40 +559,43 @@ function AgendaWilcoa() {
   };
 
   const saveChecklist = async (resId, checklist) => {
-    const next = reservations.map(r => r.id === resId ? { ...r, checklist } : r);
-    const ok = await persist(config, next, clients);
-    if (ok) {
-      setReservations(next);
+    const result = await persistPatch(cur => ({
+      ...cur,
+      reservations: cur.reservations.map(r => r.id === resId ? { ...r, checklist } : r),
+    }));
+    if (result) {
+      setReservations(result.reservations);
       showToast('Checklist guardado');
     }
-    return ok;
+    return !!result;
   };
 
   const saveClient = async (data) => {
-    let next;
-    if (data.id) {
-      next = clients.map(c => c.id === data.id ? data : c);
-    } else {
-      next = [...clients, { ...data, id: uid() }];
-    }
-    next.sort((a, b) => a.name.localeCompare(b.name));
-    const ok = await persist(config, reservations, next);
-    if (ok) {
-      setClients(next);
+    const result = await persistPatch(cur => {
+      let next;
+      if (data.id) {
+        next = cur.clients.map(c => c.id === data.id ? data : c);
+      } else {
+        next = [...cur.clients, { ...data, id: uid() }];
+      }
+      next.sort((a, b) => a.name.localeCompare(b.name));
+      return { ...cur, clients: next };
+    });
+    if (result) {
+      setClients(result.clients);
       showToast(data.id ? 'Cliente actualizado' : 'Cliente agregado');
     }
-    return ok;
+    return !!result;
   };
 
   const deleteClient = async (id) => {
     if (!canDelete(role)) return false;
-    const next = clients.filter(c => c.id !== id);
-    const ok = await persist(config, reservations, next);
-    if (ok) {
-      setClients(next);
+    const result = await persistPatch(cur => ({ ...cur, clients: cur.clients.filter(c => c.id !== id) }));
+    if (result) {
+      setClients(result.clients);
       showToast('Cliente eliminado', 'ok');
     }
-    return ok;
+    return !!result;
   };
 
   const handleLogoUpload = async (e) => {
