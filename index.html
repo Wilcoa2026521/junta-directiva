@@ -125,12 +125,34 @@ function Icon({ name, size = 16, color = 'currentColor', style }) {
 /* ============ CONFIG Y DATOS BASE ============ */
 const STORAGE_KEY = 'wilcoa:data';
 const SESSION_KEY = 'wilcoa:mySession';
+const REVIEWER_KEY = 'wilcoa:reviewerName';
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAYS_SHORT = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 
 const defaultConfig = { hallName: 'Salón Comunal La Floresta', logoDataUrl: null, publishedUrl: '', adminCode: 'WILCOA-ADMIN-2026', editorCode: 'WILCOA-EDITOR-2026' };
 const emptyExtras = { mesas: 0, sillas: 0, manteles: 0, sobremanteles: 0, sonido: false, otros: '' };
-const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: '', isExempt: false, exemptReason: '', exemptRefValue: '', extras: { ...emptyExtras }, notes: '' };
+const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: '', isExempt: false, exemptReason: '', exemptRefValue: '', extras: { ...emptyExtras }, notes: '', checklist: null };
+
+/* ============ CHECKLIST DE INSUMOS (entrega / recibido) ============ */
+const CHECKLIST_ITEMS_BASE = [
+  'Llaves', 'Salón', 'Baño de mujeres', 'Baño de hombres', 'Mesas', 'Sillas', 'Manteles', 'Sobre manteles',
+  'Escobas', 'Palo de piso', 'Felpas palo de piso', 'Limpiones', 'Cocina', 'Extintores', 'Microondas',
+  'Refrigeradora', 'Equipo de audio', 'Equipo de video',
+];
+function emptyChecklistSide() {
+  return {
+    items: CHECKLIST_ITEMS_BASE.map(name => ({ id: uid(), name, qty: '', checked: false, state: '', note: '' })),
+    observations: '',
+    doneBy: '',
+    doneAt: '',
+  };
+}
+function emptyChecklist() {
+  return { entrega: emptyChecklistSide(), recibido: emptyChecklistSide() };
+}
+function checklistHasDamage(side) {
+  return !!(side && side.items && side.items.some(it => it.state === 'malo'));
+}
 
 function paymentStatus(r) {
   if (r.isExempt) return 'exonerado';
@@ -220,6 +242,9 @@ function AgendaWilcoa() {
   const [role, setRole] = useState(ROLES.VIEWER);
   const [showLogin, setShowLogin] = useState(false);
   const [showAccessManager, setShowAccessManager] = useState(false);
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [checklistRes, setChecklistRes] = useState(null);
+  const [reviewerName, setReviewerName] = useState('');
 
   const loadFromStorage = async (silent) => {
     if (!silent) setRefreshing(true);
@@ -260,6 +285,25 @@ function AgendaWilcoa() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded]);
+
+  // Recuerda en este dispositivo el nombre de quien hace el checklist, para no tener que
+  // volver a escribirlo cada vez (no requiere sesión: cualquier persona puede usar el checklist).
+  useEffect(() => {
+    if (!loaded) return;
+    (async () => {
+      try {
+        const res = await window.storage.get(REVIEWER_KEY, false);
+        if (res && res.value) setReviewerName(res.value);
+      } catch (e) {
+        // aún no se ha guardado un nombre en este dispositivo
+      }
+    })();
+  }, [loaded]);
+
+  const updateReviewerName = (val) => {
+    setReviewerName(val);
+    window.storage.set(REVIEWER_KEY, val, false).catch(() => {});
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -341,6 +385,21 @@ function AgendaWilcoa() {
     if (ok) {
       setReservations(next);
       showToast('Reserva eliminada', 'ok');
+    }
+    return ok;
+  };
+
+  const openChecklist = (r) => {
+    setChecklistRes(r);
+    setShowChecklist(true);
+  };
+
+  const saveChecklist = async (resId, checklist) => {
+    const next = reservations.map(r => r.id === resId ? { ...r, checklist } : r);
+    const ok = await persist(config, next, clients);
+    if (ok) {
+      setReservations(next);
+      showToast('Checklist guardado');
     }
     return ok;
   };
@@ -639,7 +698,7 @@ function AgendaWilcoa() {
                   ) : (
                     <div style={styles.resStack}>
                       {(resByDate[selectedDate] || []).map(r => (
-                        <ReservationCard key={r.id} r={r} onEdit={() => openEditForm(r)} onDelete={() => deleteReservation(r.id)} defaultOpen role={role} />
+                        <ReservationCard key={r.id} r={r} onEdit={() => openEditForm(r)} onDelete={() => deleteReservation(r.id)} onChecklist={() => openChecklist(r)} defaultOpen role={role} />
                       ))}
                     </div>
                   )}
@@ -673,7 +732,7 @@ function AgendaWilcoa() {
             ) : (
               <div style={styles.resStack}>
                 {filteredReservations.map(r => (
-                  <ReservationCard key={r.id} r={r} onEdit={() => openEditForm(r)} onDelete={() => deleteReservation(r.id)} showDate role={role} />
+                  <ReservationCard key={r.id} r={r} onEdit={() => openEditForm(r)} onDelete={() => deleteReservation(r.id)} onChecklist={() => openChecklist(r)} showDate role={role} />
                 ))}
               </div>
             )}
@@ -755,6 +814,19 @@ function AgendaWilcoa() {
         />
       )}
 
+      {showChecklist && checklistRes && (
+        <ChecklistModal
+          res={checklistRes}
+          reviewerName={reviewerName}
+          onReviewerNameChange={updateReviewerName}
+          onClose={() => setShowChecklist(false)}
+          onSave={async (checklist) => {
+            const ok = await saveChecklist(checklistRes.id, checklist);
+            if (ok) setShowChecklist(false);
+          }}
+        />
+      )}
+
       {showLogin && (
         <LoginModal
           config={config}
@@ -798,7 +870,7 @@ function AgendaWilcoa() {
   );
 }
 
-function ReservationCard({ r, onEdit, onDelete, showDate, defaultOpen, role }) {
+function ReservationCard({ r, onEdit, onDelete, onChecklist, showDate, defaultOpen, role }) {
   const [open, setOpen] = useState(!!defaultOpen);
   const total = Number(r.totalAmount) || 0;
   const paid = Number(r.paidAmount) || 0;
@@ -806,6 +878,7 @@ function ReservationCard({ r, onEdit, onDelete, showDate, defaultOpen, role }) {
   const status = paymentStatus(r);
   const canEditCard = canCreateEdit(role);
   const canRemoveCard = canDelete(role);
+  const hasDamage = !!(r.checklist && (checklistHasDamage(r.checklist.entrega) || checklistHasDamage(r.checklist.recibido)));
   const timeRange = r.startTime && r.endTime ? `${r.startTime} – ${r.endTime}` : (r.startTime || r.endTime || '');
   const extrasList = [];
   if (r.extras?.mesas > 0) extrasList.push({ icon: 'Table2', label: `${r.extras.mesas} mesas` });
@@ -825,6 +898,9 @@ function ReservationCard({ r, onEdit, onDelete, showDate, defaultOpen, role }) {
           {showDate && r.phone && <div style={styles.resDateSmall}><Icon name="Phone" size={12} color="#8FA3C9" /> {r.phone}</div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {hasDamage && (
+            <div style={styles.damageBadge}><Icon name="AlertCircle" size={11} color="#fff" /> Daños</div>
+          )}
           <div style={{ ...styles.statusPill, background: `${STATUS_COLORS[status]}1F`, color: STATUS_COLORS[status] }}>
             {status === 'pagado' ? <Icon name="CheckCircle2" size={12} color={STATUS_COLORS[status]} /> : <Icon name="Clock" size={12} color={STATUS_COLORS[status]} />} {STATUS_LABELS[status]}
           </div>
@@ -882,16 +958,17 @@ function ReservationCard({ r, onEdit, onDelete, showDate, defaultOpen, role }) {
 
           {r.notes && <div style={styles.notesBox}><Icon name="StickyNote" size={12} color="#6B7B9E" /> {r.notes}</div>}
 
-          {(canEditCard || canRemoveCard) && (
-            <div style={styles.cardActions}>
-              {canEditCard && (
-                <button style={styles.iconBtn} onClick={(e) => { e.stopPropagation(); onEdit(); }}><Icon name="Edit2" size={14} color="#0B1F5C" /> Editar</button>
-              )}
-              {canRemoveCard && (
-                <button style={{ ...styles.iconBtn, color: '#FF6B4A' }} onClick={(e) => { e.stopPropagation(); onDelete(); }}><Icon name="Trash2" size={14} color="#FF6B4A" /> Eliminar</button>
-              )}
-            </div>
-          )}
+          <div style={styles.cardActions}>
+            <button style={{ ...styles.iconBtn, background: 'rgba(71,195,239,0.15)', color: '#1D6E92' }} onClick={(e) => { e.stopPropagation(); onChecklist(); }}>
+              <Icon name="Package" size={14} color="#1D6E92" /> Checklist de insumos
+            </button>
+            {canEditCard && (
+              <button style={styles.iconBtn} onClick={(e) => { e.stopPropagation(); onEdit(); }}><Icon name="Edit2" size={14} color="#0B1F5C" /> Editar</button>
+            )}
+            {canRemoveCard && (
+              <button style={{ ...styles.iconBtn, color: '#FF6B4A' }} onClick={(e) => { e.stopPropagation(); onDelete(); }}><Icon name="Trash2" size={14} color="#FF6B4A" /> Eliminar</button>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -1296,6 +1373,120 @@ function AccessManagerModal({ config, onClose, onSave }) {
   );
 }
 
+function ChecklistModal({ res, reviewerName, onReviewerNameChange, onClose, onSave }) {
+  const [data, setData] = useState(() => res.checklist || emptyChecklist());
+  const [side, setSide] = useState('entrega');
+  const [submitting, setSubmitting] = useState(false);
+
+  const current = data[side];
+  const setCurrent = (patch) => setData(prev => ({ ...prev, [side]: { ...prev[side], ...patch } }));
+  const setItem = (itemId, patch) => setCurrent({ items: current.items.map(it => it.id === itemId ? { ...it, ...patch } : it) });
+  const damage = checklistHasDamage(current);
+  const checkedCount = current.items.filter(it => it.checked).length;
+
+  const safeCancel = () => { if (!submitting) onClose(); };
+
+  const handleSave = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    const stamped = { ...current, doneBy: reviewerName.trim() || current.doneBy, doneAt: new Date().toISOString() };
+    await onSave({ ...data, [side]: stamped });
+    setSubmitting(false);
+  };
+
+  return (
+    <div style={styles.modalOverlay} onClick={safeCancel}>
+      <div style={{ ...styles.modal, maxWidth: 640 }} onClick={e => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Checklist de insumos</h2>
+          <button style={styles.closeBtn} onClick={safeCancel} disabled={submitting}><Icon name="X" size={18} color="#5C6D93" /></button>
+        </div>
+        <p style={styles.shareHint}>
+          <strong>{res.clientName || 'Reserva'}</strong> — {fmtDateHuman(res.date)}. Cualquier persona de la junta puede usar esta lista al entregar y al recibir el salón, sin necesidad de código de acceso.
+        </p>
+
+        <Field label="Tu nombre (quien revisa ahora)">
+          <input placeholder="Ej: Juan Pérez" value={reviewerName} onChange={e => onReviewerNameChange(e.target.value)} style={styles.input} />
+        </Field>
+
+        <div style={styles.tabs2}>
+          <button style={{ ...styles.tabBtn2, ...(side === 'entrega' ? styles.tabBtn2Active : {}) }} onClick={() => setSide('entrega')}>
+            <Icon name="Upload" size={13} color={side === 'entrega' ? '#0B1F5C' : 'currentColor'} /> Entrega al cliente
+          </button>
+          <button style={{ ...styles.tabBtn2, ...(side === 'recibido' ? styles.tabBtn2Active : {}) }} onClick={() => setSide('recibido')}>
+            <Icon name="RefreshCw" size={13} color={side === 'recibido' ? '#0B1F5C' : 'currentColor'} /> Recibido del cliente
+          </button>
+        </div>
+
+        {damage && (
+          <div style={styles.damageAlert}>
+            <Icon name="AlertCircle" size={16} color="#fff" />
+            Se reportaron daños o faltantes en esta lista. No se debe devolver el depósito hasta resolverlo con el cliente.
+          </div>
+        )}
+
+        <div style={styles.checklistTable}>
+          <div style={styles.checklistHeadRow}>
+            <span>Insumo</span><span>Cant.</span><span>{side === 'entrega' ? 'Entregado' : 'Recibido'}</span><span>Estado</span>
+          </div>
+          {current.items.map(it => (
+            <div key={it.id} style={styles.checklistRow}>
+              <span style={styles.checklistItemName}>{it.name}</span>
+              <input
+                style={styles.checklistQtyInput}
+                value={it.qty}
+                onChange={e => setItem(it.id, { qty: e.target.value })}
+                placeholder="—"
+                inputMode="numeric"
+              />
+              <label style={styles.checklistCheckWrap}>
+                <input type="checkbox" checked={it.checked} onChange={e => setItem(it.id, { checked: e.target.checked })} />
+              </label>
+              <select style={styles.checklistSelect} value={it.state} onChange={e => setItem(it.id, { state: e.target.value })}>
+                <option value="">Sin revisar</option>
+                <option value="bueno">Buen estado</option>
+                <option value="malo">Mal estado / dañado</option>
+              </select>
+              {it.state === 'malo' && (
+                <input
+                  style={{ ...styles.input, gridColumn: '1 / -1', marginTop: 2 }}
+                  placeholder="Describe el daño o el faltante…"
+                  value={it.note}
+                  onChange={e => setItem(it.id, { note: e.target.value })}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+        <p style={{ fontSize: 11.5, color: '#8FA3C9', margin: '8px 0' }}>{checkedCount} de {current.items.length} insumos marcados.</p>
+
+        <Field label="Observaciones generales">
+          <textarea
+            rows={3}
+            style={{ ...styles.input, resize: 'vertical', fontFamily: 'inherit' }}
+            value={current.observations}
+            onChange={e => setCurrent({ observations: e.target.value })}
+            placeholder="Notas adicionales sobre la entrega o la recepción…"
+          />
+        </Field>
+
+        {current.doneBy && (
+          <p style={{ fontSize: 11.5, color: '#8FA3C9', margin: '0 0 8px' }}>
+            Última revisión: {current.doneBy}{current.doneAt ? ` — ${new Date(current.doneAt).toLocaleString('es-CR')}` : ''}
+          </p>
+        )}
+
+        <div style={styles.modalActions}>
+          <button style={styles.cancelBtn} onClick={safeCancel} disabled={submitting}>Cerrar</button>
+          <button style={{ ...styles.saveBtn, ...(submitting ? styles.saveBtnDisabled : {}) }} disabled={submitting} onClick={handleSave}>
+            <Icon name="Save" size={15} color="#fff" /> Guardar checklist
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FloatingCalculator() {
   const [open, setOpen] = useState(false);
   const [display, setDisplay] = useState('0');
@@ -1547,6 +1738,19 @@ const styles = {
   fieldLabel: { fontSize: 12, fontWeight: 600, color: '#5C6D93' },
   input: { border: '1.5px solid #E4E9F5', borderRadius: 10, padding: '10px 12px', fontSize: 13.5, color: '#213157', background: '#FBFCFF' },
   checkboxRow: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#213157', fontWeight: 500, margin: '4px 0 14px', cursor: 'pointer' },
+
+  damageBadge: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 700, color: '#fff', background: 'linear-gradient(145deg, #E23B3B, #B23B26)', padding: '5px 9px', borderRadius: 999, whiteSpace: 'nowrap' },
+  tabs2: { display: 'flex', gap: 8, margin: '4px 0 14px' },
+  tabBtn2: { display: 'flex', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'center', background: '#F0F3FA', color: '#5C6D93', border: 'none', borderRadius: 11, padding: '10px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' },
+  tabBtn2Active: { background: 'linear-gradient(145deg, #E8F2FF, #D3E6FF)', color: '#0B1F5C', boxShadow: 'inset 0 0 0 1.5px #47C3EF' },
+  damageAlert: { display: 'flex', alignItems: 'center', gap: 8, background: 'linear-gradient(145deg, #E23B3B, #B23B26)', color: '#fff', padding: '10px 14px', borderRadius: 12, fontSize: 12.5, fontWeight: 600, marginBottom: 12, lineHeight: 1.4 },
+  checklistTable: { display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 4, maxHeight: 340, overflowY: 'auto', padding: '2px 2px 2px 0' },
+  checklistHeadRow: { display: 'grid', gridTemplateColumns: '1.7fr 0.6fr 0.8fr 1.3fr', gap: 8, fontSize: 10.5, fontWeight: 700, color: '#8FA3C9', textTransform: 'uppercase', letterSpacing: 0.4, padding: '0 4px' },
+  checklistRow: { display: 'grid', gridTemplateColumns: '1.7fr 0.6fr 0.8fr 1.3fr', gap: 8, alignItems: 'center', background: '#FAFBFF', borderRadius: 10, padding: '7px 8px', border: '1px solid #EEF1F8' },
+  checklistItemName: { fontSize: 12.5, fontWeight: 600, color: '#213157' },
+  checklistQtyInput: { border: '1.5px solid #E4E9F5', borderRadius: 8, padding: '6px 4px', fontSize: 12, textAlign: 'center', width: '100%', background: '#fff' },
+  checklistCheckWrap: { display: 'flex', justifyContent: 'center' },
+  checklistSelect: { border: '1.5px solid #E4E9F5', borderRadius: 8, padding: '6px 4px', fontSize: 11, color: '#213157', background: '#fff', width: '100%' },
 
   modalActions: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18, paddingTop: 16, borderTop: '1px solid #EEF1F8' },
   shareHint: { fontSize: 12, color: '#8FA3C9', margin: '2px 0 16px', lineHeight: 1.5 },
