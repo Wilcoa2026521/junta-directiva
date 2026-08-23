@@ -129,26 +129,66 @@ const REVIEWER_KEY = 'wilcoa:reviewerName';
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DAYS_SHORT = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 
+/* ============ MENAJE / INSUMOS DE LA RESERVA ============ */
+// Estos son los insumos "opcionales" que cada cliente puede o no necesitar.
+// Lo que se marque aquí en la reserva es justo lo que luego aparece en el checklist de entrega/recepción.
+const MENAJE_ITEMS_DEF = [
+  { key: 'mesas', label: 'Mesas', kind: 'qty', icon: 'Table2' },
+  { key: 'sillas', label: 'Sillas', kind: 'qty', icon: 'Armchair' },
+  { key: 'manteles', label: 'Manteles', kind: 'qty', icon: 'Layers' },
+  { key: 'sobremanteles', label: 'Sobre manteles', kind: 'qty', icon: 'Layers' },
+  { key: 'escobas', label: 'Escobas', kind: 'toggle', icon: 'Package' },
+  { key: 'paloDePiso', label: 'Palo de piso', kind: 'toggle', icon: 'Package' },
+  { key: 'felpasPaloDePiso', label: 'Felpas de palo de piso', kind: 'toggle', icon: 'Package' },
+  { key: 'limpiones', label: 'Limpiones', kind: 'toggle', icon: 'Package' },
+  { key: 'cocina', label: 'Cocina', kind: 'toggle', icon: 'Package' },
+  { key: 'extintores', label: 'Extintores', kind: 'toggle', icon: 'AlertCircle' },
+  { key: 'microondas', label: 'Microondas', kind: 'toggle', icon: 'Package' },
+  { key: 'refrigeradora', label: 'Refrigeradora', kind: 'toggle', icon: 'Package' },
+  { key: 'audio', label: 'Equipo de audio', kind: 'toggle', icon: 'Volume2' },
+  { key: 'video', label: 'Equipo de video', kind: 'toggle', icon: 'Package' },
+];
+const emptyExtras = MENAJE_ITEMS_DEF.reduce((acc, def) => {
+  acc[def.key] = def.kind === 'qty' ? 0 : false;
+  return acc;
+}, { otrosItems: [] });
+
 const defaultConfig = { hallName: 'Salón Comunal La Floresta', logoDataUrl: null, publishedUrl: '', adminCode: 'WILCOA-ADMIN-2026', editorCode: 'WILCOA-EDITOR-2026' };
-const emptyExtras = { mesas: 0, sillas: 0, manteles: 0, sobremanteles: 0, sonido: false, otros: '' };
-const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: '', isExempt: false, exemptReason: '', exemptRefValue: '', extras: { ...emptyExtras }, notes: '', checklist: null };
+const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: '', isExempt: false, exemptReason: '', exemptRefValue: '', extras: { ...emptyExtras, otrosItems: [] }, notes: '', checklist: null };
 
 /* ============ CHECKLIST DE INSUMOS (entrega / recibido) ============ */
-const CHECKLIST_ITEMS_BASE = [
-  'Llaves', 'Salón', 'Baño de mujeres', 'Baño de hombres', 'Mesas', 'Sillas', 'Manteles', 'Sobre manteles',
-  'Escobas', 'Palo de piso', 'Felpas palo de piso', 'Limpiones', 'Cocina', 'Extintores', 'Microondas',
-  'Refrigeradora', 'Equipo de audio', 'Equipo de video',
-];
-function emptyChecklistSide() {
+// Insumos que siempre están presentes en toda reserva (no dependen del menaje elegido).
+const CORE_CHECKLIST_ITEMS = ['Llaves', 'Salón', 'Baño de mujeres', 'Baño de hombres'];
+
+// Construye la lista de insumos a revisar para ESTA reserva: los fijos + solo el menaje
+// que se marcó como requerido al agendar (así no aparece lo que el cliente no va a usar).
+function checklistItemDefsForReservation(r) {
+  const ex = r.extras || {};
+  const items = CORE_CHECKLIST_ITEMS.map(name => ({ name, qty: '' }));
+  MENAJE_ITEMS_DEF.forEach(def => {
+    const val = ex[def.key];
+    if (def.kind === 'qty') {
+      if (Number(val) > 0) items.push({ name: def.label, qty: String(val) });
+    } else if (val) {
+      items.push({ name: def.label, qty: '' });
+    }
+  });
+  (ex.otrosItems || []).forEach(it => {
+    if (it && it.name) items.push({ name: it.name, qty: it.qty || '' });
+  });
+  return items;
+}
+function emptyChecklistSide(itemDefs) {
   return {
-    items: CHECKLIST_ITEMS_BASE.map(name => ({ id: uid(), name, qty: '', checked: false, state: '', note: '' })),
+    items: itemDefs.map(d => ({ id: uid(), name: d.name, qty: d.qty || '', checked: false, state: '', note: '' })),
     observations: '',
     doneBy: '',
     doneAt: '',
   };
 }
-function emptyChecklist() {
-  return { entrega: emptyChecklistSide(), recibido: emptyChecklistSide() };
+function emptyChecklistForReservation(r) {
+  const defs = checklistItemDefsForReservation(r);
+  return { entrega: emptyChecklistSide(defs), recibido: emptyChecklistSide(defs) };
 }
 function checklistHasDamage(side) {
   return !!(side && side.items && side.items.some(it => it.state === 'malo'));
@@ -881,12 +921,17 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, showDate, defaultOp
   const hasDamage = !!(r.checklist && (checklistHasDamage(r.checklist.entrega) || checklistHasDamage(r.checklist.recibido)));
   const timeRange = r.startTime && r.endTime ? `${r.startTime} – ${r.endTime}` : (r.startTime || r.endTime || '');
   const extrasList = [];
-  if (r.extras?.mesas > 0) extrasList.push({ icon: 'Table2', label: `${r.extras.mesas} mesas` });
-  if (r.extras?.sillas > 0) extrasList.push({ icon: 'Armchair', label: `${r.extras.sillas} sillas` });
-  if (r.extras?.manteles > 0) extrasList.push({ icon: 'Layers', label: `${r.extras.manteles} manteles` });
-  if (r.extras?.sobremanteles > 0) extrasList.push({ icon: 'Layers', label: `${r.extras.sobremanteles} sobremanteles` });
-  if (r.extras?.sonido) extrasList.push({ icon: 'Volume2', label: 'Equipo de sonido' });
-  if (r.extras?.otros) extrasList.push({ icon: 'Package', label: r.extras.otros });
+  MENAJE_ITEMS_DEF.forEach(def => {
+    const val = r.extras?.[def.key];
+    if (def.kind === 'qty') {
+      if (Number(val) > 0) extrasList.push({ icon: def.icon, label: `${val} ${def.label.toLowerCase()}` });
+    } else if (val) {
+      extrasList.push({ icon: def.icon, label: def.label });
+    }
+  });
+  (r.extras?.otrosItems || []).forEach(it => {
+    if (it && it.name) extrasList.push({ icon: 'Package', label: it.qty ? `${it.name} (${it.qty})` : it.name });
+  });
 
   return (
     <div style={styles.resCard}>
@@ -1017,8 +1062,20 @@ function StatCard({ icon, label, value, color, wide }) {
 function ReservationForm({ data, onCancel, onSave, saving, clients }) {
   const [d, setD] = useState(data);
   const [submitting, setSubmitting] = useState(false);
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemQty, setNewItemQty] = useState('');
   const set = (patch) => setD(prev => ({ ...prev, ...patch }));
   const setExtra = (patch) => setD(prev => ({ ...prev, extras: { ...prev.extras, ...patch } }));
+  const addOtroItem = () => {
+    const name = newItemName.trim();
+    if (!name) return;
+    setExtra({ otrosItems: [...(d.extras.otrosItems || []), { id: uid(), name, qty: newItemQty.trim() }] });
+    setNewItemName('');
+    setNewItemQty('');
+  };
+  const removeOtroItem = (id) => {
+    setExtra({ otrosItems: (d.extras.otrosItems || []).filter(it => it.id !== id) });
+  };
 
   const canSave = d.date && d.clientName.trim().length > 0 && (!d.isExempt || d.exemptReason.trim().length > 0);
 
@@ -1112,27 +1169,39 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
         )}
 
         <div style={styles.sectionLabel}><Icon name="Package" size={14} color="#0B1F5C" /> Menaje extra requerido</div>
+        <p style={styles.shareHint}>Marca solo lo que esta persona va a necesitar. Lo que selecciones aquí es justo lo que aparecerá luego en el checklist de entrega y recepción.</p>
         <div className="wilcoa-extras-grid" style={styles.extrasGrid}>
-          <Field label="Mesas">
-            <input type="number" min="0" value={d.extras.mesas} onChange={e => setExtra({ mesas: Number(e.target.value) })} style={styles.input} />
-          </Field>
-          <Field label="Sillas">
-            <input type="number" min="0" value={d.extras.sillas} onChange={e => setExtra({ sillas: Number(e.target.value) })} style={styles.input} />
-          </Field>
-          <Field label="Manteles">
-            <input type="number" min="0" value={d.extras.manteles} onChange={e => setExtra({ manteles: Number(e.target.value) })} style={styles.input} />
-          </Field>
-          <Field label="Sobremanteles">
-            <input type="number" min="0" value={d.extras.sobremanteles} onChange={e => setExtra({ sobremanteles: Number(e.target.value) })} style={styles.input} />
-          </Field>
+          {MENAJE_ITEMS_DEF.filter(def => def.kind === 'qty').map(def => (
+            <Field key={def.key} label={def.label}>
+              <input type="number" min="0" value={d.extras[def.key]} onChange={e => setExtra({ [def.key]: Number(e.target.value) })} style={styles.input} />
+            </Field>
+          ))}
         </div>
-        <label style={styles.checkboxRow}>
-          <input type="checkbox" checked={!!d.extras.sonido} onChange={e => setExtra({ sonido: e.target.checked })} />
-          <Icon name="Volume2" size={14} color="#213157" /> Requiere equipo de sonido
-        </label>
-        <Field label="Otro menaje / observaciones de equipo">
-          <input placeholder="Ej: tarima, cortinas, cocina completa…" value={d.extras.otros} onChange={e => setExtra({ otros: e.target.value })} style={styles.input} />
+        <div className="wilcoa-toggle-grid" style={styles.toggleGrid}>
+          {MENAJE_ITEMS_DEF.filter(def => def.kind === 'toggle').map(def => (
+            <label key={def.key} style={styles.checkboxRow}>
+              <input type="checkbox" checked={!!d.extras[def.key]} onChange={e => setExtra({ [def.key]: e.target.checked })} />
+              <Icon name={def.icon} size={14} color="#213157" /> {def.label}
+            </label>
+          ))}
+        </div>
+        <Field label="Agregar otro insumo (no está en la lista)">
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input placeholder="Nombre del insumo" value={newItemName} onChange={e => setNewItemName(e.target.value)} style={{ ...styles.input, flex: 2 }} />
+            <input placeholder="Cant." value={newItemQty} onChange={e => setNewItemQty(e.target.value)} style={{ ...styles.input, flex: 1 }} />
+            <button type="button" style={styles.addItemBtn} onClick={addOtroItem}><Icon name="Plus" size={16} color="#fff" /></button>
+          </div>
         </Field>
+        {(d.extras.otrosItems || []).length > 0 && (
+          <div style={styles.otrosItemsList}>
+            {d.extras.otrosItems.map(it => (
+              <span key={it.id} style={styles.otroItemChip}>
+                {it.name}{it.qty ? ` (${it.qty})` : ''}
+                <button type="button" style={styles.otroItemRemove} onClick={() => removeOtroItem(it.id)}><Icon name="X" size={11} color="#5C6D93" /></button>
+              </span>
+            ))}
+          </div>
+        )}
         <Field label="Notas adicionales">
           <textarea placeholder="Detalles del evento, horario, condiciones especiales…" value={d.notes} onChange={e => set({ notes: e.target.value })} style={{ ...styles.input, minHeight: 64, resize: 'vertical' }} />
         </Field>
@@ -1374,13 +1443,25 @@ function AccessManagerModal({ config, onClose, onSave }) {
 }
 
 function ChecklistModal({ res, reviewerName, onReviewerNameChange, onClose, onSave }) {
-  const [data, setData] = useState(() => res.checklist || emptyChecklist());
+  const [data, setData] = useState(() => res.checklist || emptyChecklistForReservation(res));
   const [side, setSide] = useState('entrega');
   const [submitting, setSubmitting] = useState(false);
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemQty, setNewItemQty] = useState('');
 
   const current = data[side];
   const setCurrent = (patch) => setData(prev => ({ ...prev, [side]: { ...prev[side], ...patch } }));
   const setItem = (itemId, patch) => setCurrent({ items: current.items.map(it => it.id === itemId ? { ...it, ...patch } : it) });
+  const addItem = () => {
+    const name = newItemName.trim();
+    if (!name) return;
+    setCurrent({ items: [...current.items, { id: uid(), name, qty: newItemQty.trim(), checked: false, state: '', note: '' }] });
+    setNewItemName('');
+    setNewItemQty('');
+  };
+  const removeItem = (itemId) => {
+    setCurrent({ items: current.items.filter(it => it.id !== itemId) });
+  };
   const damage = checklistHasDamage(current);
   const checkedCount = current.items.filter(it => it.checked).length;
 
@@ -1425,12 +1506,12 @@ function ChecklistModal({ res, reviewerName, onReviewerNameChange, onClose, onSa
           </div>
         )}
 
-        <div style={styles.checklistTable}>
-          <div style={styles.checklistHeadRow}>
-            <span>Insumo</span><span>Cant.</span><span>{side === 'entrega' ? 'Entregado' : 'Recibido'}</span><span>Estado</span>
+        <div className="wilcoa-checklist-table" style={styles.checklistTable}>
+          <div className="wilcoa-checklist-row" style={styles.checklistHeadRow}>
+            <span>Insumo</span><span>Cant.</span><span>{side === 'entrega' ? 'Entregado' : 'Recibido'}</span><span>Estado</span><span></span>
           </div>
           {current.items.map(it => (
-            <div key={it.id} style={styles.checklistRow}>
+            <div key={it.id} className="wilcoa-checklist-row" style={styles.checklistRow}>
               <span style={styles.checklistItemName}>{it.name}</span>
               <input
                 style={styles.checklistQtyInput}
@@ -1447,6 +1528,9 @@ function ChecklistModal({ res, reviewerName, onReviewerNameChange, onClose, onSa
                 <option value="bueno">Buen estado</option>
                 <option value="malo">Mal estado / dañado</option>
               </select>
+              <button type="button" style={styles.checklistRemoveBtn} onClick={() => removeItem(it.id)} title="Quitar de esta lista">
+                <Icon name="X" size={12} color="#B23B26" />
+              </button>
               {it.state === 'malo' && (
                 <input
                   style={{ ...styles.input, gridColumn: '1 / -1', marginTop: 2 }}
@@ -1458,7 +1542,14 @@ function ChecklistModal({ res, reviewerName, onReviewerNameChange, onClose, onSa
             </div>
           ))}
         </div>
-        <p style={{ fontSize: 11.5, color: '#8FA3C9', margin: '8px 0' }}>{checkedCount} de {current.items.length} insumos marcados.</p>
+
+        <div style={styles.checklistAddRow}>
+          <input placeholder="Agregar insumo a esta lista…" value={newItemName} onChange={e => setNewItemName(e.target.value)} style={{ ...styles.input, flex: 2 }} />
+          <input placeholder="Cant." value={newItemQty} onChange={e => setNewItemQty(e.target.value)} style={{ ...styles.input, flex: 1 }} />
+          <button type="button" style={styles.addItemBtn} onClick={addItem}><Icon name="Plus" size={16} color="#fff" /></button>
+        </div>
+
+        <p style={{ fontSize: 11.5, color: '#8FA3C9', margin: '4px 0 8px' }}>{checkedCount} de {current.items.length} insumos marcados.</p>
 
         <Field label="Observaciones generales">
           <textarea
@@ -1618,6 +1709,9 @@ const fontImport = `
     .wilcoa-stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
     .wilcoa-form-grid { grid-template-columns: 1fr !important; }
     .wilcoa-extras-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    .wilcoa-toggle-grid { grid-template-columns: 1fr !important; }
+    .wilcoa-checklist-row { grid-template-columns: 1.3fr 0.55fr 0.65fr 1fr 0.3fr !important; gap: 5px !important; }
+    .wilcoa-checklist-table { font-size: 11px; }
   }
 `;
 
@@ -1745,12 +1839,19 @@ const styles = {
   tabBtn2Active: { background: 'linear-gradient(145deg, #E8F2FF, #D3E6FF)', color: '#0B1F5C', boxShadow: 'inset 0 0 0 1.5px #47C3EF' },
   damageAlert: { display: 'flex', alignItems: 'center', gap: 8, background: 'linear-gradient(145deg, #E23B3B, #B23B26)', color: '#fff', padding: '10px 14px', borderRadius: 12, fontSize: 12.5, fontWeight: 600, marginBottom: 12, lineHeight: 1.4 },
   checklistTable: { display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 4, maxHeight: 340, overflowY: 'auto', padding: '2px 2px 2px 0' },
-  checklistHeadRow: { display: 'grid', gridTemplateColumns: '1.7fr 0.6fr 0.8fr 1.3fr', gap: 8, fontSize: 10.5, fontWeight: 700, color: '#8FA3C9', textTransform: 'uppercase', letterSpacing: 0.4, padding: '0 4px' },
-  checklistRow: { display: 'grid', gridTemplateColumns: '1.7fr 0.6fr 0.8fr 1.3fr', gap: 8, alignItems: 'center', background: '#FAFBFF', borderRadius: 10, padding: '7px 8px', border: '1px solid #EEF1F8' },
+  checklistHeadRow: { display: 'grid', gridTemplateColumns: '1.6fr 0.55fr 0.75fr 1.15fr 0.3fr', gap: 8, fontSize: 10.5, fontWeight: 700, color: '#8FA3C9', textTransform: 'uppercase', letterSpacing: 0.4, padding: '0 4px' },
+  checklistRow: { display: 'grid', gridTemplateColumns: '1.6fr 0.55fr 0.75fr 1.15fr 0.3fr', gap: 8, alignItems: 'center', background: '#FAFBFF', borderRadius: 10, padding: '7px 8px', border: '1px solid #EEF1F8' },
   checklistItemName: { fontSize: 12.5, fontWeight: 600, color: '#213157' },
   checklistQtyInput: { border: '1.5px solid #E4E9F5', borderRadius: 8, padding: '6px 4px', fontSize: 12, textAlign: 'center', width: '100%', background: '#fff' },
   checklistCheckWrap: { display: 'flex', justifyContent: 'center' },
   checklistSelect: { border: '1.5px solid #E4E9F5', borderRadius: 8, padding: '6px 4px', fontSize: 11, color: '#213157', background: '#fff', width: '100%' },
+  checklistRemoveBtn: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: '50%', border: 'none', background: '#FBEAEA', cursor: 'pointer', flexShrink: 0 },
+  checklistAddRow: { display: 'flex', gap: 8, margin: '4px 0 6px' },
+  toggleGrid: { display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6, margin: '10px 0 14px' },
+  addItemBtn: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, background: 'linear-gradient(145deg, #47C3EF, #1E9BD6)', border: 'none', borderRadius: 10, cursor: 'pointer', flexShrink: 0 },
+  otrosItemsList: { display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 },
+  otroItemChip: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, background: 'rgba(11,31,92,0.06)', color: '#213157', padding: '5px 6px 5px 10px', borderRadius: 999, fontWeight: 600 },
+  otroItemRemove: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%', border: 'none', background: '#fff', cursor: 'pointer' },
 
   modalActions: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18, paddingTop: 16, borderTop: '1px solid #EEF1F8' },
   shareHint: { fontSize: 12, color: '#8FA3C9', margin: '2px 0 16px', lineHeight: 1.5 },
