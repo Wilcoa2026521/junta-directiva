@@ -161,6 +161,7 @@
   ChevronRight: () => <polyline points="9 18 15 12 9 6"/>,
   ChevronDown: () => <polyline points="6 9 12 15 18 9"/>,
   DollarSign: () => <><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></>,
+  ColonSign: () => <text x="12" y="17.5" textAnchor="middle" fontSize="15" fontFamily="Arial, sans-serif" fontWeight="700" stroke="none" fill="currentColor">₡</text>,
   Phone: () => <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>,
   User: () => <><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></>,
   Upload: () => <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>,
@@ -179,6 +180,7 @@
   Volume2: () => <><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></>,
   StickyNote: () => <><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3z"/><polyline points="15 3 15 9 21 9"/></>,
   Save: () => <><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>,
+  Home: () => <><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></>,
   RefreshCw: () => <><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></>,
   QrCode: () => <><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="3" height="3"/><line x1="19" y1="14" x2="21" y2="14"/><line x1="14" y1="19" x2="14" y2="21"/><line x1="19" y1="19" x2="21" y2="21"/><line x1="21" y1="19" x2="19" y2="21"/></>,
   Copy: () => <><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></>,
@@ -216,7 +218,7 @@ function Icon({ name, size = 16, color = 'currentColor', style }) {
   if (!shape) return null;
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color, ...style }}>
       {shape()}
     </svg>
   );
@@ -283,7 +285,27 @@ const emptyExtras = MENAJE_ITEMS_DEF.reduce((acc, def) => {
   return acc;
 }, { otrosItems: [] });
 
-const defaultConfig = { hallName: 'Salón Comunal La Floresta', logoDataUrl: null, publishedUrl: '', adminCode: 'WILCOA-ADMIN-2026', editorCode: 'WILCOA-EDITOR-2026' };
+const defaultConfig = {
+  hallName: 'Salón Comunal La Floresta',
+  logoDataUrl: null,
+  publishedUrl: '',
+  adminCode: 'WILCOA-ADMIN-2026',
+  editorCode: 'WILCOA-EDITOR-2026',
+  // Lista de precios editable: precio del alquiler del salón + precio de cada
+  // insumo de menaje extra. El Monto total de cada reserva se calcula a
+  // partir de estos valores (alquiler + menaje extra seleccionado).
+  priceList: {
+    rental: 40000,
+    mesasAdicionales: 1200,
+    sillasAdicionales: 200,
+    manteles: 0,
+    sobremanteles: 0,
+    felpasPaloDePiso: 0,
+    microondas: 0,
+    audio: 0,
+    video: 0,
+  },
+};
 const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: '', isExempt: false, exemptReason: '', exemptRefValue: '', extras: { ...emptyExtras, otrosItems: [] }, notes: '', checklist: null };
 
 /* ============ CHECKLIST DE INSUMOS (entrega / recibido) ============ */
@@ -492,7 +514,12 @@ function AgendaWilcoa() {
   // caso se espera a que termine para no interrumpirle lo que está tipeando.
   const applyRemoteData = (parsed) => {
     if (!parsed) return;
-    setConfig({ ...defaultConfig, ...(parsed.config || {}) });
+    const remoteConfig = parsed.config || {};
+    setConfig({
+      ...defaultConfig,
+      ...remoteConfig,
+      priceList: { ...defaultConfig.priceList, ...(remoteConfig.priceList || {}) },
+    });
     setReservations(Array.isArray(parsed.reservations) ? parsed.reservations : []);
     setClients(Array.isArray(parsed.clients) ? parsed.clients : []);
     setLastSync(new Date());
@@ -607,7 +634,11 @@ function AgendaWilcoa() {
       const next = await window.storagePatch(STORAGE_KEY, (current) => {
         const base = current
           ? {
-              config: { ...defaultConfig, ...(current.config || {}) },
+              config: {
+                ...defaultConfig,
+                ...(current.config || {}),
+                priceList: { ...defaultConfig.priceList, ...((current.config || {}).priceList || {}) },
+              },
               reservations: Array.isArray(current.reservations) ? current.reservations : [],
               clients: Array.isArray(current.clients) ? current.clients : [],
             }
@@ -937,6 +968,7 @@ function AgendaWilcoa() {
           { id: 'list', label: 'Reservas', icon: 'List' },
           { id: 'clients', label: 'Clientes', icon: 'User' },
           { id: 'stats', label: 'Resumen', icon: 'TrendingUp' },
+          { id: 'prices', label: 'Precios', icon: 'ColonSign' },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{ ...styles.tabBtn, ...(tab === t.id ? styles.tabBtnActive : {}) }}>
             <Icon name={t.icon} size={15} color={tab === t.id ? '#0B1F5C' : 'rgba(255,255,255,0.7)'} /> {t.label}
@@ -1102,12 +1134,16 @@ function AgendaWilcoa() {
             <StatCard icon="Calendar" label="Reservas totales" value={stats.total} color="#0B1F5C" />
             <StatCard icon="Clock" label="Próximas reservas" value={stats.upcoming} color="#47C3EF" />
             <StatCard icon="CheckCircle2" label="Totalmente pagadas" value={stats.fullyPaidCount} color="#1B8A3E" />
-            <StatCard icon="DollarSign" label="Ingreso esperado" value={fmtMoney(stats.totalIncomeExpected)} color="#0B1F5C" wide />
+            <StatCard icon="ColonSign" label="Ingreso esperado" value={fmtMoney(stats.totalIncomeExpected)} color="#0B1F5C" wide />
             <StatCard icon="TrendingUp" label="Total abonado" value={fmtMoney(stats.totalPaid)} color="#1B8A3E" wide />
             <StatCard icon="AlertCircle" label="Saldo pendiente" value={fmtMoney(stats.pending)} color="#FF6B4A" wide />
             <StatCard icon="Sparkles" label="Actividades exoneradas" value={stats.exemptCount} color="#7B4FE0" />
-            <StatCard icon="DollarSign" label="Valor donado (referencial, no es ingreso)" value={fmtMoney(stats.exemptRefTotal)} color="#7B4FE0" wide />
+            <StatCard icon="ColonSign" label="Valor donado (referencial, no es ingreso)" value={fmtMoney(stats.exemptRefTotal)} color="#7B4FE0" wide />
           </div>
+        )}
+
+        {tab === 'prices' && (
+          <PriceListPanel priceList={config.priceList} role={role} onSave={(priceList) => updateConfig({ priceList })} saving={saving} />
         )}
       </main>
 
@@ -1116,6 +1152,7 @@ function AgendaWilcoa() {
           data={formData}
           saving={saving}
           clients={clients}
+          priceList={config.priceList}
           onCancel={() => setShowForm(false)}
           onSave={async (d) => { const ok = await saveReservation(d); if (ok) setShowForm(false); }}
         />
@@ -1302,7 +1339,7 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, onPhotos, showDate,
           )}
           {extrasTotal > 0 && (
             <div style={styles.extrasSubtotalRow}>
-              <Icon name="DollarSign" size={12} color="#8A6D00" /> Menaje extra (aparte del alquiler): <strong>{fmtMoney(extrasTotal)}</strong>
+              <Icon name="ColonSign" size={12} color="#8A6D00" /> Menaje extra (aparte del alquiler): <strong>{fmtMoney(extrasTotal)}</strong>
             </div>
           )}
 
@@ -1367,7 +1404,83 @@ function StatCard({ icon, label, value, color, wide }) {
   );
 }
 
-function ReservationForm({ data, onCancel, onSave, saving, clients }) {
+// Lista de precios del alquiler y del menaje extra. Es la fuente de verdad que usa el
+// formulario de reserva para calcular el Monto total automáticamente. Solo el
+// Administrador puede editarla; Editor y Solo consulta la ven pero no pueden cambiarla.
+function PriceListPanel({ priceList, role, onSave, saving }) {
+  const editable = canManageConfig(role);
+  const [draft, setDraft] = useState(priceList);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    if (!dirty) setDraft(priceList); // trae cambios hechos desde otro dispositivo mientras no se está editando aquí
+  }, [priceList]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const rows = [
+    { key: 'rental', label: 'Alquiler del salón', hint: 'Precio base del alquiler (sin menaje extra)', icon: 'Home' },
+    ...MENAJE_ITEMS_DEF.map(def => ({ key: def.key, label: def.label, hint: def.kind === 'qty' ? 'Precio por unidad' : 'Precio fijo si se marca', icon: def.icon })),
+  ];
+
+  const updateDraft = (key, value) => {
+    setDirty(true);
+    setDraft(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSave = async () => {
+    const cleaned = Object.fromEntries(Object.entries(draft).map(([k, v]) => [k, Number(v) || 0]));
+    const ok = await onSave(cleaned);
+    if (ok) { setDirty(false); setDraft(cleaned); }
+  };
+
+  const handleDiscard = () => { setDraft(priceList); setDirty(false); };
+
+  return (
+    <div style={styles.listWrap}>
+      <div style={styles.priceListCard}>
+        <div style={styles.sectionLabel}><Icon name="ColonSign" size={14} color="#0B1F5C" /> Lista de precios</div>
+        <p style={styles.shareHint}>
+          {editable
+            ? 'Estos son los precios que se usan para calcular el Monto total de cada reserva automáticamente. Cambiá lo que necesites y guardá.'
+            : 'Estos son los precios vigentes. Solo el Administrador puede editarlos.'}
+        </p>
+
+        <div style={styles.priceListRows}>
+          {rows.map(row => (
+            <div key={row.key} style={styles.priceListRow}>
+              <div style={styles.priceListRowLabel}>
+                <Icon name={row.icon} size={15} color="#0B1F5C" />
+                <span>{row.label}</span>
+              </div>
+              <label style={styles.montoInline}>
+                <span>₡</span>
+                <input
+                  type="number" min="0"
+                  value={draft[row.key] ?? 0}
+                  onChange={e => updateDraft(row.key, e.target.value)}
+                  readOnly={!editable}
+                  style={{ ...styles.montoInlineInput, ...(editable ? {} : { color: '#8FA3C9', cursor: 'default' }) }}
+                />
+              </label>
+            </div>
+          ))}
+        </div>
+
+        {editable && (
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <button type="button" style={styles.saveBtn} onClick={handleSave} disabled={!dirty || saving}>
+              <Icon name="Save" size={15} color="#fff" /> {saving ? 'Guardando…' : 'Guardar precios'}
+            </button>
+            {dirty && (
+              <button type="button" style={styles.cancelBtn} onClick={handleDiscard} disabled={saving}>Descartar cambios</button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReservationForm({ data, onCancel, onSave, saving, clients, priceList }) {
   const [d, setD] = useState(data);
   const [submitting, setSubmitting] = useState(false);
   const [newItemName, setNewItemName] = useState('');
@@ -1377,6 +1490,32 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
   const [menajeSearch, setMenajeSearch] = useState('');
   const set = (patch) => setD(prev => ({ ...prev, ...patch }));
   const setExtra = (patch) => setD(prev => ({ ...prev, extras: { ...prev.extras, ...patch } }));
+  const priceFor = (key) => Number(priceList?.[key]) || 0;
+  const rentalPrice = priceFor('rental');
+
+  // Mantiene el Monto total sincronizado automáticamente: arranca con el precio del
+  // alquiler y, cada vez que se agrega/quita/cambia menaje extra, se le suma o resta
+  // la diferencia (sin pisar un monto que la persona haya escrito a mano por su cuenta,
+  // como un descuento negociado — solo aplica el cambio puntual del menaje).
+  const prevExtrasTotalRef = useRef(null);
+  useEffect(() => {
+    const currentExtrasTotal = extrasSubtotal(d);
+    if (prevExtrasTotalRef.current === null) {
+      prevExtrasTotalRef.current = currentExtrasTotal;
+      if (!d.id && !d.isExempt && !d.totalAmount) {
+        setD(prev => ({ ...prev, totalAmount: String(rentalPrice) }));
+      }
+      return;
+    }
+    if (d.isExempt) { prevExtrasTotalRef.current = currentExtrasTotal; return; }
+    const delta = currentExtrasTotal - prevExtrasTotalRef.current;
+    if (delta !== 0) {
+      setD(prev => ({ ...prev, totalAmount: String((Number(prev.totalAmount) || 0) + delta) }));
+    }
+    prevExtrasTotalRef.current = currentExtrasTotal;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.extras, d.isExempt]);
+
   const addOtroItem = () => {
     const name = newItemName.trim();
     if (!name) return;
@@ -1400,7 +1539,7 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
   const availableMenajeDefs = MENAJE_ITEMS_DEF.filter(def => !isMenajeSelected(def) &&
     def.label.toLowerCase().includes(menajeSearch.trim().toLowerCase()));
   const addMenajeFromMenu = (def) => {
-    setExtra({ [def.key]: def.kind === 'qty' ? { qty: 1, monto: '' } : { on: true, monto: '' } });
+    setExtra({ [def.key]: def.kind === 'qty' ? { qty: 1, monto: String(priceFor(def.key)) } : { on: true, monto: String(priceFor(def.key)) } });
   };
   const removeMenajeItem = (def) => {
     setExtra({ [def.key]: def.kind === 'qty' ? { qty: 0, monto: '' } : { on: false, monto: '' } });
@@ -1409,7 +1548,7 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
     const current = Number(d.extras[def.key]?.qty) || 0;
     const next = current + delta;
     if (next <= 0) { removeMenajeItem(def); return; }
-    setExtra({ [def.key]: { ...d.extras[def.key], qty: next } });
+    setExtra({ [def.key]: { ...d.extras[def.key], qty: next, monto: String(priceFor(def.key) * next) } });
   };
   const updateMenajeMonto = (def, monto) => {
     setExtra({ [def.key]: { ...d.extras[def.key], monto } });
@@ -1469,14 +1608,16 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
           </Field>
         </div>
 
-        <div style={styles.sectionLabel}><Icon name="DollarSign" size={14} color="#0B1F5C" /> Condiciones de pago</div>
+        <div style={styles.sectionLabel}><Icon name="ColonSign" size={14} color="#0B1F5C" /> Condiciones de pago</div>
         <label style={{ ...styles.checkboxRow, background: d.isExempt ? 'rgba(123,79,224,0.1)' : 'transparent', padding: '9px 10px', borderRadius: 10 }}>
           <input
             type="checkbox"
             checked={!!d.isExempt}
             onChange={e => {
               const exempt = e.target.checked;
-              set(exempt ? { isExempt: true, totalAmount: '0', paidAmount: '0', depositAmount: '0' } : { isExempt: false });
+              set(exempt
+                ? { isExempt: true, totalAmount: '0', paidAmount: '0', depositAmount: '0' }
+                : { isExempt: false, totalAmount: String(rentalPrice + extrasSubtotal(d)) });
             }}
           />
           <Icon name="Sparkles" size={14} color="#5B2FBF" /> Exonerar del pago del alquiler (préstamo del salón para actividad de bien social)
@@ -1498,7 +1639,7 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
           </>
         ) : (
           <div className="wilcoa-form-grid" style={styles.formGrid}>
-            <Field label="Monto total (₡)">
+            <Field label="Monto total (₡) — se calcula solo (alquiler + menaje extra), pero podés ajustarlo">
               <input type="number" min="0" placeholder="0" value={d.totalAmount} onChange={e => set({ totalAmount: e.target.value })} style={styles.input} />
             </Field>
             <Field label="Monto abonado (₡)">
@@ -1567,7 +1708,7 @@ function ReservationForm({ data, onCancel, onSave, saving, clients }) {
 
         {menajeExtrasTotal > 0 && (
           <div style={styles.menajeExtrasTotalRow}>
-            <Icon name="DollarSign" size={13} color="#8A6D00" /> Subtotal de menaje extra (aparte del alquiler): <strong>{fmtMoney(menajeExtrasTotal)}</strong>
+            <Icon name="ColonSign" size={13} color="#8A6D00" /> Subtotal de menaje extra (aparte del alquiler): <strong>{fmtMoney(menajeExtrasTotal)}</strong>
           </div>
         )}
 
@@ -2479,6 +2620,10 @@ const styles = {
   iconBtn: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 600, color: '#0B1F5C', background: 'rgba(11,31,92,0.06)', border: 'none', borderRadius: 9, padding: '7px 12px', cursor: 'pointer' },
 
   listWrap: { display: 'flex', flexDirection: 'column', gap: 16 },
+  priceListCard: { background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 8px 20px rgba(11,31,92,0.1)', border: '1px solid rgba(11,31,92,0.06)' },
+  priceListRows: { display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 },
+  priceListRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', background: '#FAFBFF', borderRadius: 10, padding: '10px 12px', border: '1px solid #EEF1F8' },
+  priceListRowLabel: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, fontWeight: 600, color: '#213157' },
   searchBar: { display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.95)', borderRadius: 14, padding: '11px 14px', boxShadow: '0 8px 20px rgba(0,0,0,0.2)' },
   searchInput: { flex: 1, border: 'none', background: 'transparent', fontSize: 13.5, color: '#213157' },
 
