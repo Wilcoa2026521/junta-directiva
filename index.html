@@ -310,7 +310,7 @@ const defaultConfig = {
 // Se precarga en cada reserva nueva pero queda editable por si hay que reajustarlo.
 const DEFAULT_DEPOSIT = '20000';
 
-const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: DEFAULT_DEPOSIT, damageItems: [], depositReturn: DEFAULT_DEPOSIT, isExempt: false, exemptReason: '', exemptRefValue: '', extras: { ...emptyExtras, otrosItems: [] }, notes: '', checklist: null };
+const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: DEFAULT_DEPOSIT, damageItems: [], depositReturn: '0', isExempt: false, exemptReason: '', exemptRefValue: '', extras: { ...emptyExtras, otrosItems: [] }, notes: '', checklist: null };
 
 /* ============ CHECKLIST DE INSUMOS (entrega / recibido) ============ */
 // Construye la lista de insumos a revisar para ESTA reserva: los fijos/incluidos (siempre
@@ -1608,27 +1608,35 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
   };
   const damageItemsTotal = (d.damageItems || []).reduce((s, it) => s + (Number(it?.monto) || 0), 0);
 
-  // Mantiene "Devolución del Depósito" sincronizada automáticamente: arranca igual
-  // al depósito de garantía y, cada vez que cambia el depósito o los daños cobrados,
-  // se le aplica esa misma diferencia (sin pisar un ajuste manual de Tesorería, como
-  // redondear el vuelto en efectivo).
-  const prevDepositCalcRef = useRef(null);
+  // "Devolución del Depósito" arranca en ₡0 porque, al reservar, el evento todavía no
+  // pasó y no se le ha devuelto nada al cliente. Recién cuando se registra o cambia un
+  // daño (o se ajusta el depósito ya habiendo daños) después de revisar el salón, se
+  // recalcula sola como depósito − daños. No toca el campo al abrir el formulario
+  // (respeta el valor cargado: ₡0 en una reserva nueva, o lo que ya tenía guardado
+  // una reserva existente).
+  const prevDamageTotalRef = useRef(null);
+  const prevDepositAmountRef = useRef(null);
   useEffect(() => {
     const dep = Number(d.depositAmount) || 0;
-    const dmg = damageItemsTotal;
-    const currentCalc = Math.max(dep - dmg, 0);
-    if (prevDepositCalcRef.current === null) {
-      prevDepositCalcRef.current = currentCalc;
+    if (prevDamageTotalRef.current === null) {
+      prevDamageTotalRef.current = damageItemsTotal;
+      prevDepositAmountRef.current = dep;
       return;
     }
-    if (d.isExempt) { prevDepositCalcRef.current = currentCalc; return; }
-    const delta = currentCalc - prevDepositCalcRef.current;
-    if (delta !== 0) {
-      setD(prev => ({ ...prev, depositReturn: String(Math.max((Number(prev.depositReturn) || 0) + delta, 0)) }));
+    if (d.isExempt) {
+      prevDamageTotalRef.current = damageItemsTotal;
+      prevDepositAmountRef.current = dep;
+      return;
     }
-    prevDepositCalcRef.current = currentCalc;
+    const damageChanged = damageItemsTotal !== prevDamageTotalRef.current;
+    const depositChangedWithDamages = dep !== prevDepositAmountRef.current && damageItemsTotal > 0;
+    if (damageChanged || depositChangedWithDamages) {
+      setD(prev => ({ ...prev, depositReturn: String(Math.max(dep - damageItemsTotal, 0)) }));
+    }
+    prevDamageTotalRef.current = damageItemsTotal;
+    prevDepositAmountRef.current = dep;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.depositAmount, damageItemsTotal, d.isExempt]);
+  }, [damageItemsTotal, d.depositAmount, d.isExempt]);
 
   // Insumo "seleccionado" = este cliente lo va a necesitar además del alquiler (por eso sale
   // del menú y aparece marcado abajo, que es justo lo que luego arma el checklist y lo que
@@ -1725,7 +1733,7 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
               const exempt = e.target.checked;
               set(exempt
                 ? { isExempt: true, totalAmount: '0', paidAmount: '0', depositAmount: '0', damageItems: [], depositReturn: '0' }
-                : { isExempt: false, totalAmount: String(rentalPrice + extrasSubtotal(d)), depositAmount: d.depositAmount === '0' ? DEFAULT_DEPOSIT : d.depositAmount, depositReturn: d.depositReturn === '0' ? DEFAULT_DEPOSIT : d.depositReturn });
+                : { isExempt: false, totalAmount: String(rentalPrice + extrasSubtotal(d)), depositAmount: d.depositAmount === '0' ? DEFAULT_DEPOSIT : d.depositAmount });
             }}
           />
           <Icon name="Sparkles" size={14} color="#5B2FBF" /> Exonerar del pago del alquiler (préstamo del salón para actividad de bien social)
