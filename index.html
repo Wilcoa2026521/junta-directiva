@@ -306,7 +306,11 @@ const defaultConfig = {
     video: 0,
   },
 };
-const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: '', isExempt: false, exemptReason: '', exemptRefValue: '', extras: { ...emptyExtras, otrosItems: [] }, notes: '', checklist: null };
+// Depósito de garantía estándar que se le pide al cliente al reservar el salón.
+// Se precarga en cada reserva nueva pero queda editable por si hay que reajustarlo.
+const DEFAULT_DEPOSIT = '20000';
+
+const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: DEFAULT_DEPOSIT, damageAmount: '', damageNotes: '', depositReturn: DEFAULT_DEPOSIT, isExempt: false, exemptReason: '', exemptRefValue: '', extras: { ...emptyExtras, otrosItems: [] }, notes: '', checklist: null };
 
 /* ============ CHECKLIST DE INSUMOS (entrega / recibido) ============ */
 // Construye la lista de insumos a revisar para ESTA reserva: los fijos/incluidos (siempre
@@ -843,7 +847,14 @@ function AgendaWilcoa() {
     const fullyPaidCount = paidReservations.filter(r => (Number(r.paidAmount) || 0) >= (Number(r.totalAmount) || 0) && Number(r.totalAmount) > 0).length;
     const exemptCount = exemptReservations.length;
     const exemptRefTotal = exemptReservations.reduce((s, r) => s + (Number(r.exemptRefValue) || 0), 0);
-    return { total: reservations.length, upcoming: upcoming.length, totalIncomeExpected, totalPaid, pending, fullyPaidCount, exemptCount, exemptRefTotal };
+    const totalDeposits = paidReservations.reduce((s, r) => s + (Number(r.depositAmount) || 0), 0);
+    const totalDamages = paidReservations.reduce((s, r) => s + (Number(r.damageAmount) || 0), 0);
+    const totalDepositReturn = paidReservations.reduce((s, r) => {
+      const dep = Number(r.depositAmount) || 0;
+      const dmg = Number(r.damageAmount) || 0;
+      return s + (Number(r.depositReturn) || Math.max(dep - dmg, 0));
+    }, 0);
+    return { total: reservations.length, upcoming: upcoming.length, totalIncomeExpected, totalPaid, pending, fullyPaidCount, exemptCount, exemptRefTotal, totalDeposits, totalDamages, totalDepositReturn };
   }, [reservations]);
 
   const openNewForm = (dateKey) => {
@@ -853,7 +864,12 @@ function AgendaWilcoa() {
   };
   const openEditForm = (r) => {
     if (!canCreateEdit(role)) return;
-    setFormData({ ...emptyRes, ...r, extras: { ...emptyExtras, ...r.extras } });
+    // Reservas viejas no tienen depositReturn guardado: se calcula a partir de su
+    // propio depósito y daños en vez de caer en el DEFAULT_DEPOSIT del formulario vacío.
+    const depAmt = Number(r.depositAmount) || 0;
+    const dmgAmt = Number(r.damageAmount) || 0;
+    const depositReturn = r.depositReturn ?? String(Math.max(depAmt - dmgAmt, 0));
+    setFormData({ ...emptyRes, ...r, depositReturn, extras: { ...emptyExtras, ...r.extras } });
     setShowForm(true);
   };
   const openNewClientForm = () => {
@@ -1137,6 +1153,9 @@ function AgendaWilcoa() {
             <StatCard icon="ColonSign" label="Ingreso esperado" value={fmtMoney(stats.totalIncomeExpected)} color="#0B1F5C" wide />
             <StatCard icon="TrendingUp" label="Total abonado" value={fmtMoney(stats.totalPaid)} color="#1B8A3E" wide />
             <StatCard icon="AlertCircle" label="Saldo pendiente" value={fmtMoney(stats.pending)} color="#FF6B4A" wide />
+            <StatCard icon="Sparkles" label="Depósitos en caja" value={fmtMoney(stats.totalDeposits)} color="#8A6D00" wide />
+            <StatCard icon="AlertCircle" label="Cobrado por daños" value={fmtMoney(stats.totalDamages)} color="#B23B26" wide />
+            <StatCard icon="RefreshCw" label="Pendiente de devolver (depósitos)" value={fmtMoney(stats.totalDepositReturn)} color="#1D6E92" wide />
             <StatCard icon="Sparkles" label="Actividades exoneradas" value={stats.exemptCount} color="#7B4FE0" />
             <StatCard icon="ColonSign" label="Valor donado (referencial, no es ingreso)" value={fmtMoney(stats.exemptRefTotal)} color="#7B4FE0" wide />
           </div>
@@ -1248,6 +1267,8 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, onPhotos, showDate,
   const total = Number(r.totalAmount) || 0;
   const paid = Number(r.paidAmount) || 0;
   const deposit = Number(r.depositAmount) || 0;
+  const damage = Number(r.damageAmount) || 0;
+  const depositReturn = Number(r.depositReturn) || Math.max(deposit - damage, 0);
   const status = paymentStatus(r);
   const canEditCard = canCreateEdit(role);
   const canRemoveCard = canDelete(role);
@@ -1323,6 +1344,13 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, onPhotos, showDate,
               {deposit > 0 && (
                 <div style={styles.depositRow}>
                   <Icon name="Sparkles" size={12} color="#8A6D00" /> Depósito de garantía: <strong>{fmtMoney(deposit)}</strong>
+                  {damage > 0 && <> · Daños: <strong>{fmtMoney(damage)}</strong></>}
+                  {' '}· Devolución: <strong>{fmtMoney(depositReturn)}</strong>
+                </div>
+              )}
+              {damage > 0 && r.damageNotes && (
+                <div style={{ ...styles.depositRow, color: '#B23B26', background: 'rgba(178,59,38,0.1)' }}>
+                  <Icon name="AlertCircle" size={12} color="#B23B26" /> {r.damageNotes}
                 </div>
               )}
             </>
@@ -1516,6 +1544,28 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.extras, d.isExempt]);
 
+  // Mantiene "Devolución del Depósito" sincronizada automáticamente: arranca igual
+  // al depósito de garantía y, cada vez que cambia el depósito o los daños cobrados,
+  // se le aplica esa misma diferencia (sin pisar un ajuste manual de Tesorería, como
+  // redondear el vuelto en efectivo).
+  const prevDepositCalcRef = useRef(null);
+  useEffect(() => {
+    const dep = Number(d.depositAmount) || 0;
+    const dmg = Number(d.damageAmount) || 0;
+    const currentCalc = Math.max(dep - dmg, 0);
+    if (prevDepositCalcRef.current === null) {
+      prevDepositCalcRef.current = currentCalc;
+      return;
+    }
+    if (d.isExempt) { prevDepositCalcRef.current = currentCalc; return; }
+    const delta = currentCalc - prevDepositCalcRef.current;
+    if (delta !== 0) {
+      setD(prev => ({ ...prev, depositReturn: String(Math.max((Number(prev.depositReturn) || 0) + delta, 0)) }));
+    }
+    prevDepositCalcRef.current = currentCalc;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.depositAmount, d.damageAmount, d.isExempt]);
+
   const addOtroItem = () => {
     const name = newItemName.trim();
     if (!name) return;
@@ -1606,6 +1656,15 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
           <Field label="Teléfono">
             <input placeholder="8888-8888" value={d.phone} onChange={e => set({ phone: e.target.value })} style={styles.input} />
           </Field>
+          <Field label="Devolución del Depósito (₡) — se calcula solo (depósito − daños)">
+            <input
+              type="number" min="0" placeholder="0"
+              value={d.depositReturn}
+              onChange={e => set({ depositReturn: e.target.value })}
+              style={styles.input}
+              disabled={!!d.isExempt}
+            />
+          </Field>
         </div>
 
         <div style={styles.sectionLabel}><Icon name="ColonSign" size={14} color="#0B1F5C" /> Condiciones de pago</div>
@@ -1616,8 +1675,8 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
             onChange={e => {
               const exempt = e.target.checked;
               set(exempt
-                ? { isExempt: true, totalAmount: '0', paidAmount: '0', depositAmount: '0' }
-                : { isExempt: false, totalAmount: String(rentalPrice + extrasSubtotal(d)) });
+                ? { isExempt: true, totalAmount: '0', paidAmount: '0', depositAmount: '0', damageAmount: '0', depositReturn: '0' }
+                : { isExempt: false, totalAmount: String(rentalPrice + extrasSubtotal(d)), depositAmount: d.depositAmount === '0' ? DEFAULT_DEPOSIT : d.depositAmount, depositReturn: d.depositReturn === '0' ? DEFAULT_DEPOSIT : d.depositReturn });
             }}
           />
           <Icon name="Sparkles" size={14} color="#5B2FBF" /> Exonerar del pago del alquiler (préstamo del salón para actividad de bien social)
@@ -1648,6 +1707,27 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
             <Field label="Depósito de garantía (₡)">
               <input type="number" min="0" placeholder="0" value={d.depositAmount} onChange={e => set({ depositAmount: e.target.value })} style={styles.input} />
             </Field>
+            <Field label="Daños cobrados al depósito (₡)">
+              <input type="number" min="0" placeholder="0" value={d.damageAmount} onChange={e => set({ damageAmount: e.target.value })} style={styles.input} />
+            </Field>
+          </div>
+        )}
+
+        {!d.isExempt && (
+          <Field label="Detalle de daños (mesas, sillas, equipo de sonido, etc.)">
+            <textarea
+              rows={2}
+              style={{ ...styles.input, resize: 'vertical', fontFamily: 'inherit' }}
+              placeholder="Ej: 2 sillas rotas ₡8,000, vidrio de ventana ₡12,000…"
+              value={d.damageNotes}
+              onChange={e => set({ damageNotes: e.target.value })}
+            />
+          </Field>
+        )}
+
+        {!d.isExempt && Number(d.damageAmount) > 0 && (
+          <div style={styles.depositRow}>
+            <Icon name="AlertCircle" size={12} color="#8A6D00" /> Se descontaron {fmtMoney(d.damageAmount)} de daños del depósito de {fmtMoney(d.depositAmount)} → devolver <strong>{fmtMoney(d.depositReturn)}</strong>
           </div>
         )}
 
