@@ -1590,7 +1590,12 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
   const addDamageItem = () => {
     const detail = newDamageDetail.trim();
     if (!detail) return;
-    setD(prev => ({ ...prev, damageItems: [...(prev.damageItems || []), { id: uid(), qty: newDamageQty.trim(), detail, monto: newDamageMonto.trim() }] }));
+    // Cantidad × valor unitario = el monto que se cobra por este ítem dañado
+    // (ej: 2 mesas × ₡5,000 = ₡10,000). Si no se pone cantidad, se asume 1.
+    const qty = newDamageQty.trim();
+    const unitValue = Number(newDamageMonto) || 0;
+    const totalMonto = (Number(qty) || 1) * unitValue;
+    setD(prev => ({ ...prev, damageItems: [...(prev.damageItems || []), { id: uid(), qty, detail, monto: String(totalMonto) }] }));
     setNewDamageQty('');
     setNewDamageDetail('');
     setNewDamageMonto('');
@@ -1759,6 +1764,8 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
             <div style={styles.sectionLabel}><Icon name="AlertCircle" size={14} color="#B23B26" /> Daños cobrados al depósito</div>
             <p style={styles.shareHint}>Si al recibir el salón hay daños a mesas, sillas, equipo de sonido, etc., agregalos aquí con cantidad, detalle y monto — se descuentan del depósito y el resto se le devuelve al cliente.</p>
 
+            <p style={{ ...styles.shareHint, fontSize: 11.5, marginTop: -4 }}>Cantidad × valor unitario = lo que se cobra por ese ítem (ej: 2 mesas × ₡5,000 = ₡10,000).</p>
+
             {(d.damageItems || []).length === 0 && (
               <p style={styles.menajeEmptyHint}>No se registraron daños todavía.</p>
             )}
@@ -1775,7 +1782,7 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
                     <label style={styles.montoInline}>
                       <span>₡</span>
                       <input
-                        type="number" min="0" placeholder="Monto a cobrar"
+                        type="number" min="0" placeholder="Monto total a cobrar"
                         value={it.monto}
                         onChange={e => updateDamageItemMonto(it.id, e.target.value)}
                         style={styles.montoInlineInput}
@@ -1787,9 +1794,9 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
             )}
 
             <div style={styles.checklistAddRow}>
-              <input placeholder="Cant." value={newDamageQty} onChange={e => setNewDamageQty(e.target.value)} style={{ ...styles.input, flex: 1 }} />
+              <input placeholder="Cant. (ej: 2)" value={newDamageQty} onChange={e => setNewDamageQty(e.target.value)} style={{ ...styles.input, flex: 1 }} />
               <input placeholder="Detalle (ej: mesa, silla, equipo de sonido)…" value={newDamageDetail} onChange={e => setNewDamageDetail(e.target.value)} style={{ ...styles.input, flex: 3 }} />
-              <input type="number" min="0" placeholder="Monto ₡" value={newDamageMonto} onChange={e => setNewDamageMonto(e.target.value)} style={{ ...styles.input, flex: 1 }} />
+              <input type="number" min="0" placeholder="Valor unitario ₡" value={newDamageMonto} onChange={e => setNewDamageMonto(e.target.value)} style={{ ...styles.input, flex: 1 }} />
               <button type="button" style={styles.addItemBtn} onClick={addDamageItem}><Icon name="Plus" size={16} color="#fff" /></button>
             </div>
 
