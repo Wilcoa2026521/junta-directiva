@@ -310,7 +310,7 @@ const defaultConfig = {
 // Se precarga en cada reserva nueva pero queda editable por si hay que reajustarlo.
 const DEFAULT_DEPOSIT = '20000';
 
-const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: DEFAULT_DEPOSIT, damageAmount: '', damageNotes: '', depositReturn: DEFAULT_DEPOSIT, isExempt: false, exemptReason: '', exemptRefValue: '', extras: { ...emptyExtras, otrosItems: [] }, notes: '', checklist: null };
+const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: DEFAULT_DEPOSIT, damageItems: [], depositReturn: DEFAULT_DEPOSIT, isExempt: false, exemptReason: '', exemptRefValue: '', extras: { ...emptyExtras, otrosItems: [] }, notes: '', checklist: null };
 
 /* ============ CHECKLIST DE INSUMOS (entrega / recibido) ============ */
 // Construye la lista de insumos a revisar para ESTA reserva: los fijos/incluidos (siempre
@@ -343,6 +343,18 @@ function extrasSubtotal(r) {
   });
   (ex.otrosItems || []).forEach(it => { sum += Number(it?.monto) || 0; });
   return sum;
+}
+// Suma lo cobrado por daños al depósito, a partir de la lista de ítems de daños
+// (cada uno con cantidad, detalle y monto), igual que se suma el menaje extra.
+function damagesTotal(r) {
+  return (r?.damageItems || []).reduce((s, it) => s + (Number(it?.monto) || 0), 0);
+}
+// Monto de devolución del depósito guardado en la reserva. Usa un chequeo explícito de
+// "vacío" en vez de "||", porque con "||" un valor guardado como 0 (todo el depósito se
+// fue en daños) se confundía con "no hay valor guardado" y volvía a calcularse mal.
+function storedDepositReturn(r) {
+  const v = r?.depositReturn;
+  return (v !== undefined && v !== null && v !== '') ? Number(v) : null;
 }
 function emptyChecklistSide(itemDefs) {
   return {
@@ -848,11 +860,12 @@ function AgendaWilcoa() {
     const exemptCount = exemptReservations.length;
     const exemptRefTotal = exemptReservations.reduce((s, r) => s + (Number(r.exemptRefValue) || 0), 0);
     const totalDeposits = paidReservations.reduce((s, r) => s + (Number(r.depositAmount) || 0), 0);
-    const totalDamages = paidReservations.reduce((s, r) => s + (Number(r.damageAmount) || 0), 0);
+    const totalDamages = paidReservations.reduce((s, r) => s + damagesTotal(r), 0);
     const totalDepositReturn = paidReservations.reduce((s, r) => {
       const dep = Number(r.depositAmount) || 0;
-      const dmg = Number(r.damageAmount) || 0;
-      return s + (Number(r.depositReturn) || Math.max(dep - dmg, 0));
+      const dmg = damagesTotal(r);
+      const stored = storedDepositReturn(r);
+      return s + (stored !== null ? stored : Math.max(dep - dmg, 0));
     }, 0);
     return { total: reservations.length, upcoming: upcoming.length, totalIncomeExpected, totalPaid, pending, fullyPaidCount, exemptCount, exemptRefTotal, totalDeposits, totalDamages, totalDepositReturn };
   }, [reservations]);
@@ -864,12 +877,18 @@ function AgendaWilcoa() {
   };
   const openEditForm = (r) => {
     if (!canCreateEdit(role)) return;
-    // Reservas viejas no tienen depositReturn guardado: se calcula a partir de su
-    // propio depósito y daños en vez de caer en el DEFAULT_DEPOSIT del formulario vacío.
+    // Migra reservas viejas que tenían un solo "damageAmount" (sin ítems) a un ítem de
+    // daños único, y calcula depositReturn si nunca se guardó — sin usar "||", que trataba
+    // un depósito devuelto en ₡0 como si no existiera y lo recalculaba mal.
+    let damageItems = r.damageItems || [];
+    if (!r.damageItems && Number(r.damageAmount) > 0) {
+      damageItems = [{ id: uid(), qty: '1', detail: r.damageNotes || 'Daños', monto: String(r.damageAmount) }];
+    }
     const depAmt = Number(r.depositAmount) || 0;
-    const dmgAmt = Number(r.damageAmount) || 0;
-    const depositReturn = r.depositReturn ?? String(Math.max(depAmt - dmgAmt, 0));
-    setFormData({ ...emptyRes, ...r, depositReturn, extras: { ...emptyExtras, ...r.extras } });
+    const dmgAmt = damageItems.reduce((s, it) => s + (Number(it?.monto) || 0), 0);
+    const stored = storedDepositReturn(r);
+    const depositReturn = stored !== null ? String(stored) : String(Math.max(depAmt - dmgAmt, 0));
+    setFormData({ ...emptyRes, ...r, damageItems, depositReturn, extras: { ...emptyExtras, ...r.extras } });
     setShowForm(true);
   };
   const openNewClientForm = () => {
@@ -1267,8 +1286,9 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, onPhotos, showDate,
   const total = Number(r.totalAmount) || 0;
   const paid = Number(r.paidAmount) || 0;
   const deposit = Number(r.depositAmount) || 0;
-  const damage = Number(r.damageAmount) || 0;
-  const depositReturn = Number(r.depositReturn) || Math.max(deposit - damage, 0);
+  const damage = damagesTotal(r);
+  const storedReturn = storedDepositReturn(r);
+  const depositReturn = storedReturn !== null ? storedReturn : Math.max(deposit - damage, 0);
   const status = paymentStatus(r);
   const canEditCard = canCreateEdit(role);
   const canRemoveCard = canDelete(role);
@@ -1348,9 +1368,12 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, onPhotos, showDate,
                   {' '}· Devolución: <strong>{fmtMoney(depositReturn)}</strong>
                 </div>
               )}
-              {damage > 0 && r.damageNotes && (
-                <div style={{ ...styles.depositRow, color: '#B23B26', background: 'rgba(178,59,38,0.1)' }}>
-                  <Icon name="AlertCircle" size={12} color="#B23B26" /> {r.damageNotes}
+              {damage > 0 && r.damageItems && r.damageItems.length > 0 && (
+                <div style={{ ...styles.depositRow, color: '#B23B26', background: 'rgba(178,59,38,0.1)', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="AlertCircle" size={12} color="#B23B26" /> Daños cobrados al depósito:</span>
+                  {r.damageItems.map(it => (
+                    <span key={it.id}>{it.qty ? `${it.qty} × ` : ''}{it.detail || 'Sin detalle'} — {fmtMoney(it.monto)}</span>
+                  ))}
                 </div>
               )}
             </>
@@ -1515,6 +1538,9 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
   const [newItemQty, setNewItemQty] = useState('');
   const [newItemMonto, setNewItemMonto] = useState('');
   const [menajeMenuOpen, setMenajeMenuOpen] = useState(false);
+  const [newDamageQty, setNewDamageQty] = useState('');
+  const [newDamageDetail, setNewDamageDetail] = useState('');
+  const [newDamageMonto, setNewDamageMonto] = useState('');
   const [menajeSearch, setMenajeSearch] = useState('');
   const set = (patch) => setD(prev => ({ ...prev, ...patch }));
   const setExtra = (patch) => setD(prev => ({ ...prev, extras: { ...prev.extras, ...patch } }));
@@ -1544,28 +1570,6 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [d.extras, d.isExempt]);
 
-  // Mantiene "Devolución del Depósito" sincronizada automáticamente: arranca igual
-  // al depósito de garantía y, cada vez que cambia el depósito o los daños cobrados,
-  // se le aplica esa misma diferencia (sin pisar un ajuste manual de Tesorería, como
-  // redondear el vuelto en efectivo).
-  const prevDepositCalcRef = useRef(null);
-  useEffect(() => {
-    const dep = Number(d.depositAmount) || 0;
-    const dmg = Number(d.damageAmount) || 0;
-    const currentCalc = Math.max(dep - dmg, 0);
-    if (prevDepositCalcRef.current === null) {
-      prevDepositCalcRef.current = currentCalc;
-      return;
-    }
-    if (d.isExempt) { prevDepositCalcRef.current = currentCalc; return; }
-    const delta = currentCalc - prevDepositCalcRef.current;
-    if (delta !== 0) {
-      setD(prev => ({ ...prev, depositReturn: String(Math.max((Number(prev.depositReturn) || 0) + delta, 0)) }));
-    }
-    prevDepositCalcRef.current = currentCalc;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [d.depositAmount, d.damageAmount, d.isExempt]);
-
   const addOtroItem = () => {
     const name = newItemName.trim();
     if (!name) return;
@@ -1580,6 +1584,46 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
   const updateOtroItemMonto = (id, monto) => {
     setExtra({ otrosItems: (d.extras.otrosItems || []).map(it => it.id === id ? { ...it, monto } : it) });
   };
+
+  // Ítems de daños cobrados al depósito: cantidad, detalle (mesa, silla, equipo de
+  // sonido, etc.) y monto — mismo patrón que "Otro" en menaje extra.
+  const addDamageItem = () => {
+    const detail = newDamageDetail.trim();
+    if (!detail) return;
+    setD(prev => ({ ...prev, damageItems: [...(prev.damageItems || []), { id: uid(), qty: newDamageQty.trim(), detail, monto: newDamageMonto.trim() }] }));
+    setNewDamageQty('');
+    setNewDamageDetail('');
+    setNewDamageMonto('');
+  };
+  const removeDamageItem = (id) => {
+    setD(prev => ({ ...prev, damageItems: (prev.damageItems || []).filter(it => it.id !== id) }));
+  };
+  const updateDamageItemMonto = (id, monto) => {
+    setD(prev => ({ ...prev, damageItems: (prev.damageItems || []).map(it => it.id === id ? { ...it, monto } : it) }));
+  };
+  const damageItemsTotal = (d.damageItems || []).reduce((s, it) => s + (Number(it?.monto) || 0), 0);
+
+  // Mantiene "Devolución del Depósito" sincronizada automáticamente: arranca igual
+  // al depósito de garantía y, cada vez que cambia el depósito o los daños cobrados,
+  // se le aplica esa misma diferencia (sin pisar un ajuste manual de Tesorería, como
+  // redondear el vuelto en efectivo).
+  const prevDepositCalcRef = useRef(null);
+  useEffect(() => {
+    const dep = Number(d.depositAmount) || 0;
+    const dmg = damageItemsTotal;
+    const currentCalc = Math.max(dep - dmg, 0);
+    if (prevDepositCalcRef.current === null) {
+      prevDepositCalcRef.current = currentCalc;
+      return;
+    }
+    if (d.isExempt) { prevDepositCalcRef.current = currentCalc; return; }
+    const delta = currentCalc - prevDepositCalcRef.current;
+    if (delta !== 0) {
+      setD(prev => ({ ...prev, depositReturn: String(Math.max((Number(prev.depositReturn) || 0) + delta, 0)) }));
+    }
+    prevDepositCalcRef.current = currentCalc;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.depositAmount, damageItemsTotal, d.isExempt]);
 
   // Insumo "seleccionado" = este cliente lo va a necesitar además del alquiler (por eso sale
   // del menú y aparece marcado abajo, que es justo lo que luego arma el checklist y lo que
@@ -1675,7 +1719,7 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
             onChange={e => {
               const exempt = e.target.checked;
               set(exempt
-                ? { isExempt: true, totalAmount: '0', paidAmount: '0', depositAmount: '0', damageAmount: '0', depositReturn: '0' }
+                ? { isExempt: true, totalAmount: '0', paidAmount: '0', depositAmount: '0', damageItems: [], depositReturn: '0' }
                 : { isExempt: false, totalAmount: String(rentalPrice + extrasSubtotal(d)), depositAmount: d.depositAmount === '0' ? DEFAULT_DEPOSIT : d.depositAmount, depositReturn: d.depositReturn === '0' ? DEFAULT_DEPOSIT : d.depositReturn });
             }}
           />
@@ -1707,28 +1751,54 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
             <Field label="Depósito de garantía (₡)">
               <input type="number" min="0" placeholder="0" value={d.depositAmount} onChange={e => set({ depositAmount: e.target.value })} style={styles.input} />
             </Field>
-            <Field label="Daños cobrados al depósito (₡)">
-              <input type="number" min="0" placeholder="0" value={d.damageAmount} onChange={e => set({ damageAmount: e.target.value })} style={styles.input} />
-            </Field>
           </div>
         )}
 
         {!d.isExempt && (
-          <Field label="Detalle de daños (mesas, sillas, equipo de sonido, etc.)">
-            <textarea
-              rows={2}
-              style={{ ...styles.input, resize: 'vertical', fontFamily: 'inherit' }}
-              placeholder="Ej: 2 sillas rotas ₡8,000, vidrio de ventana ₡12,000…"
-              value={d.damageNotes}
-              onChange={e => set({ damageNotes: e.target.value })}
-            />
-          </Field>
-        )}
+          <>
+            <div style={styles.sectionLabel}><Icon name="AlertCircle" size={14} color="#B23B26" /> Daños cobrados al depósito</div>
+            <p style={styles.shareHint}>Si al recibir el salón hay daños a mesas, sillas, equipo de sonido, etc., agregalos aquí con cantidad, detalle y monto — se descuentan del depósito y el resto se le devuelve al cliente.</p>
 
-        {!d.isExempt && Number(d.damageAmount) > 0 && (
-          <div style={styles.depositRow}>
-            <Icon name="AlertCircle" size={12} color="#8A6D00" /> Se descontaron {fmtMoney(d.damageAmount)} de daños del depósito de {fmtMoney(d.depositAmount)} → devolver <strong>{fmtMoney(d.depositReturn)}</strong>
-          </div>
+            {(d.damageItems || []).length === 0 && (
+              <p style={styles.menajeEmptyHint}>No se registraron daños todavía.</p>
+            )}
+
+            {(d.damageItems || []).length > 0 && (
+              <div style={styles.selectedMenajeList}>
+                {d.damageItems.map(it => (
+                  <div key={it.id} style={styles.selectedMenajeChip}>
+                    <div style={styles.selectedMenajeChipTop}>
+                      <Icon name="AlertCircle" size={14} color="#B23B26" />
+                      <span style={styles.selectedMenajeLabel}>{it.qty ? `${it.qty} × ` : ''}{it.detail}</span>
+                      <button type="button" style={styles.otroItemRemove} onClick={() => removeDamageItem(it.id)}><Icon name="X" size={11} color="#5C6D93" /></button>
+                    </div>
+                    <label style={styles.montoInline}>
+                      <span>₡</span>
+                      <input
+                        type="number" min="0" placeholder="Monto a cobrar"
+                        value={it.monto}
+                        onChange={e => updateDamageItemMonto(it.id, e.target.value)}
+                        style={styles.montoInlineInput}
+                      />
+                    </label>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={styles.checklistAddRow}>
+              <input placeholder="Cant." value={newDamageQty} onChange={e => setNewDamageQty(e.target.value)} style={{ ...styles.input, flex: 1 }} />
+              <input placeholder="Detalle (ej: mesa, silla, equipo de sonido)…" value={newDamageDetail} onChange={e => setNewDamageDetail(e.target.value)} style={{ ...styles.input, flex: 3 }} />
+              <input type="number" min="0" placeholder="Monto ₡" value={newDamageMonto} onChange={e => setNewDamageMonto(e.target.value)} style={{ ...styles.input, flex: 1 }} />
+              <button type="button" style={styles.addItemBtn} onClick={addDamageItem}><Icon name="Plus" size={16} color="#fff" /></button>
+            </div>
+
+            {damageItemsTotal > 0 && (
+              <div style={styles.depositRow}>
+                <Icon name="AlertCircle" size={12} color="#8A6D00" /> Se descontaron {fmtMoney(damageItemsTotal)} de daños del depósito de {fmtMoney(d.depositAmount)} → devolver <strong>{fmtMoney(d.depositReturn)}</strong>
+              </div>
+            )}
+          </>
         )}
 
         <div style={styles.sectionLabel}><Icon name="Package" size={14} color="#0B1F5C" /> Menaje extra requerido</div>
