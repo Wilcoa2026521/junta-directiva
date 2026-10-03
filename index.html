@@ -163,6 +163,7 @@
   DollarSign: () => <><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></>,
   ColonSign: () => <text x="12" y="17.5" textAnchor="middle" fontSize="15" fontFamily="Arial, sans-serif" fontWeight="700" stroke="none" fill="currentColor">₡</text>,
   Phone: () => <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/>,
+  MessageCircle: () => <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>,
   User: () => <><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></>,
   Upload: () => <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>,
   LayoutGrid: () => <><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></>,
@@ -1283,6 +1284,61 @@ function AgendaWilcoa() {
   );
 }
 
+// Convierte un teléfono escrito a mano (8888-8888, 8888 8888, +506 8888-8888...)
+// en un enlace tel: válido. Si trae 8 dígitos se asume Costa Rica (+506).
+function toTelHref(raw) {
+  const s = String(raw || '').trim();
+  const digits = s.replace(/\D/g, '');
+  if (!digits) return null;
+  if (s.startsWith('+')) return `tel:+${digits}`;
+  if (digits.length === 8) return `tel:+506${digits}`;
+  if (digits.length === 11 && digits.startsWith('506')) return `tel:+${digits}`;
+  return `tel:${digits}`;
+}
+
+// Enlace de WhatsApp (wa.me exige solo dígitos con código de país, sin +).
+function toWaHref(raw, text) {
+  const s = String(raw || '').trim();
+  const digits = s.replace(/\D/g, '');
+  if (!digits) return null;
+  const num = (s.startsWith('+') || digits.length > 8) ? digits : `506${digits}`;
+  return `https://wa.me/${num}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
+}
+
+// Teléfono tocable: abre el marcador del celular (o la app de llamadas en PC).
+// stopPropagation evita que al tocarlo se abra/cierre la tarjeta de la reserva.
+function PhoneLink({ phone, message, size = 12 }) {
+  const href = toTelHref(phone);
+  const wa = toWaHref(phone, message);
+  if (!href) return <span>{phone}</span>;
+  return (
+    <span style={styles.phoneWrap}>
+      <a
+        href={href}
+        onClick={e => e.stopPropagation()}
+        title={`Llamar al ${phone}`}
+        aria-label={`Llamar al ${phone}`}
+        style={styles.phoneLink}
+      >
+        <Icon name="Phone" size={size} color="#1D6E92" /> {phone}
+      </a>
+      {wa && (
+        <a
+          href={wa}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          title={`Escribir por WhatsApp al ${phone}`}
+          aria-label={`Escribir por WhatsApp al ${phone}`}
+          style={styles.waLink}
+        >
+          <Icon name="MessageCircle" size={size} color="#fff" /> WhatsApp
+        </a>
+      )}
+    </span>
+  );
+}
+
 function ReservationCard({ r, onEdit, onDelete, onChecklist, onPhotos, showDate, defaultOpen, role }) {
   const [open, setOpen] = useState(!!defaultOpen);
   const total = Number(r.totalAmount) || 0;
@@ -1318,7 +1374,7 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, onPhotos, showDate,
           <div style={styles.resClient}><Icon name="User" size={14} color="#0B1F5C" /> {r.clientName || 'Sin nombre'}</div>
           {showDate && <div style={styles.resDateSmall}><Icon name="Calendar" size={12} color="#8FA3C9" /> {fmtDateHuman(r.date)}</div>}
           {timeRange && <div style={styles.resDateSmall}><Icon name="Clock" size={12} color="#8FA3C9" /> {timeRange}</div>}
-          {showDate && r.phone && <div style={styles.resDateSmall}><Icon name="Phone" size={12} color="#8FA3C9" /> {r.phone}</div>}
+          {showDate && r.phone && <div style={styles.resDateSmall}><PhoneLink phone={r.phone} message={`Hola ${r.clientName || ''}, le saludamos por su reserva del salón${r.date ? ' para el ' + fmtDateHuman(r.date) : ''}. `} /></div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {hasDamage && (
@@ -1333,7 +1389,7 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, onPhotos, showDate,
 
       {open && (
         <div style={styles.resCardBody}>
-          {r.phone && <div style={styles.resPhone}><Icon name="Phone" size={12} color="#8FA3C9" /> {r.phone}</div>}
+          {r.phone && <div style={styles.resPhone}><PhoneLink phone={r.phone} message={`Hola ${r.clientName || ''}, le saludamos por su reserva del salón${r.date ? ' para el ' + fmtDateHuman(r.date) : ''}. `} /></div>}
 
           {r.isExempt ? (
             <div style={styles.exemptBox}>
@@ -1429,7 +1485,7 @@ function ClientCard({ c, onEdit, onDelete, role }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
         <div style={{ minWidth: 0 }}>
           <div style={styles.resClient}><Icon name="User" size={14} color="#0B1F5C" /> {c.name}</div>
-          {c.phone && <div style={styles.resPhone}><Icon name="Phone" size={12} color="#8FA3C9" /> {c.phone}</div>}
+          {c.phone && <div style={styles.resPhone}><PhoneLink phone={c.phone} message={`Hola ${c.name || ''}, le saludamos del salón comunal. `} /></div>}
         </div>
         {(canEditCard || canRemoveCard) && (
           <div style={styles.cardActions}>
@@ -2773,6 +2829,9 @@ const styles = {
   resCardBody: { marginTop: 10, paddingTop: 10, borderTop: '1px solid #EEF1F8' },
   resClient: { display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, fontSize: 14.5, color: '#0B1F5C' },
   resDateSmall: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#8FA3C9', marginTop: 3, textTransform: 'capitalize' },
+  phoneLink: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 700, color: '#1D6E92', background: 'rgba(71,195,239,0.15)', padding: '5px 11px', borderRadius: 999, textDecoration: 'none', textTransform: 'none', cursor: 'pointer', WebkitTapHighlightColor: 'rgba(71,195,239,0.3)' },
+  phoneWrap: { display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  waLink: { display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 700, color: '#fff', background: '#25D366', padding: '5px 11px', borderRadius: 999, textDecoration: 'none', textTransform: 'none', cursor: 'pointer', WebkitTapHighlightColor: 'rgba(37,211,102,0.3)' },
   resPhone: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#8FA3C9', marginTop: 2 },
   statusPill: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, fontWeight: 700, padding: '5px 10px', borderRadius: 999, whiteSpace: 'nowrap' },
   depositRow: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8A6D00', background: 'rgba(242,183,5,0.14)', padding: '7px 10px', borderRadius: 10, marginBottom: 8, fontWeight: 500 },
