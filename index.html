@@ -392,6 +392,8 @@ const ROLE_LABELS = { viewer: 'Solo consulta', editor: 'Editor de reservas', adm
 function canCreateEdit(role) { return role === ROLES.EDITOR || role === ROLES.ADMIN; }
 function canDelete(role) { return role === ROLES.ADMIN; }
 function canManageConfig(role) { return role === ROLES.ADMIN; }
+// Lista de precios: la pueden editar el Administrador y el Editor (logo, nombre y códigos siguen solo para el Administrador).
+function canEditPrices(role) { return role === ROLES.EDITOR || role === ROLES.ADMIN; }
 
 function uid() {
   return 'r_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -1520,7 +1522,7 @@ function StatCard({ icon, label, value, color, wide }) {
 // formulario de reserva para calcular el Monto total automáticamente. Solo el
 // Administrador puede editarla; Editor y Solo consulta la ven pero no pueden cambiarla.
 function PriceListPanel({ priceList, role, onSave, saving }) {
-  const editable = canManageConfig(role);
+  const editable = canEditPrices(role);
   const [draft, setDraft] = useState(priceList);
   const [dirty, setDirty] = useState(false);
 
@@ -1553,7 +1555,7 @@ function PriceListPanel({ priceList, role, onSave, saving }) {
         <p style={styles.shareHint}>
           {editable
             ? 'Estos son los precios que se usan para calcular el Monto total de cada reserva automáticamente. Cambiá lo que necesites y guardá.'
-            : 'Estos son los precios vigentes. Solo el Administrador puede editarlos.'}
+            : 'Estos son los precios vigentes. Solo el Administrador y el Editor pueden editarlos.'}
         </p>
 
         <div style={styles.priceListRows}>
