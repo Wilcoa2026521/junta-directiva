@@ -311,7 +311,40 @@ const defaultConfig = {
 // Se precarga en cada reserva nueva pero queda editable por si hay que reajustarlo.
 const DEFAULT_DEPOSIT = '20000';
 
-const emptyRes = { id: null, date: '', startTime: '', endTime: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: DEFAULT_DEPOSIT, damageItems: [], depositReturn: '0', isExempt: false, exemptReason: '', exemptRefValue: '', voluntaryFee: '', extras: { ...emptyExtras, otrosItems: [] }, notes: '', checklist: null };
+const emptyRes = { id: null, date: '', startTime: '', endTime: '', byHours: false, clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: DEFAULT_DEPOSIT, damageItems: [], depositReturn: '0', isExempt: false, exemptReason: '', exemptRefValue: '', voluntaryFee: '', extras: { ...emptyExtras, otrosItems: [] }, notes: '', checklist: null };
+
+/* ============ REGLA: UNA RESERVA POR DÍA (con excepción "por horas") ============ */
+// Devuelve null si la reserva se puede guardar, o { message } si choca con otra.
+// - Normal: solo una reserva por día.
+// - Marcada "Reserva por horas": puede compartir el día, pero con hora de inicio y fin y sin
+//   cruzarse con otra reserva de ese día. Si la otra no tiene horario, se asume que ocupa todo el día.
+// - Al editar una reserva que no cambió fecha/horario/modalidad no se revisa (tolera duplicados viejos).
+function findDayConflict(list, data, previous) {
+  if (!data.date) return null;
+  if (previous && previous.date === data.date && !!previous.byHours === !!data.byHours
+      && (previous.startTime || '') === (data.startTime || '') && (previous.endTime || '') === (data.endTime || '')) return null;
+  const others = list.filter(r => r.date === data.date && r.id !== data.id);
+  if (others.length === 0) return null;
+  const who = (r) => (r.clientName ? ' por ' + r.clientName : '');
+  if (!data.byHours) {
+    return { message: 'Este día ya está reservado' + who(others[0]) + '. Solo se permite una reserva por día; elige otra fecha o márcala como "Reserva por horas".' };
+  }
+  if (!data.startTime || !data.endTime) {
+    return { message: 'Este día ya tiene una reserva. Para compartirlo, indica la hora de inicio y la hora de fin.' };
+  }
+  if (data.endTime <= data.startTime) {
+    return { message: 'La hora de fin debe ser posterior a la hora de inicio.' };
+  }
+  for (const o of others) {
+    if (!o.startTime || !o.endTime) {
+      return { message: 'Este día ya está reservado' + who(o) + ' sin horario (todo el día). Para compartirlo, edita esa reserva e indícale su hora de inicio y fin.' };
+    }
+    if (data.startTime < o.endTime && o.startTime < data.endTime) {
+      return { message: 'El horario se cruza con la reserva' + who(o) + ' (' + o.startTime + ' – ' + o.endTime + '). Elige otro horario.' };
+    }
+  }
+  return null;
+}
 
 /* ============ CHECKLIST DE INSUMOS (entrega / recibido) ============ */
 // Construye la lista de insumos a revisar para ESTA reserva: los fijos/incluidos (siempre
@@ -666,7 +699,11 @@ function AgendaWilcoa() {
       });
       return next;
     } catch (e) {
-      showToast('No se pudo guardar. Revisa tu conexión e intenta de nuevo sin cerrar la app.', 'error');
+      if (e && e.code === 'DIA_OCUPADO') {
+        showToast(e.message, 'error');
+      } else {
+        showToast('No se pudo guardar. Revisa tu conexión e intenta de nuevo sin cerrar la app.', 'error');
+      }
       return null;
     } finally {
       setSaving(false);
@@ -701,6 +738,15 @@ function AgendaWilcoa() {
     const phone = (data.phone || '').trim();
 
     const result = await persistPatch(cur => {
+      // Una reserva por día (salvo "Reserva por horas" sin cruces de horario). Se revisa contra la
+      // versión más reciente del servidor, así también se bloquea el choque entre dos dispositivos.
+      const previous = data.id ? cur.reservations.find(r => r.id === data.id) : null;
+      const conflict = findDayConflict(cur.reservations, data, previous);
+      if (conflict) {
+        const err = new Error(conflict.message);
+        err.code = 'DIA_OCUPADO';
+        throw err;
+      }
       let nextRes;
       if (data.id) {
         nextRes = cur.reservations.map(r => r.id === data.id ? data : r);
@@ -874,9 +920,9 @@ function AgendaWilcoa() {
     return { total: reservations.length, upcoming: upcoming.length, totalIncomeExpected, totalPaid, pending, fullyPaidCount, exemptCount, exemptRefTotal, voluntaryFeeTotal, totalDeposits, totalDamages, totalDepositReturn };
   }, [reservations]);
 
-  const openNewForm = (dateKey) => {
+  const openNewForm = (dateKey, byHours) => {
     if (!canCreateEdit(role)) return;
-    setFormData({ ...emptyRes, id: null, date: dateKey || selectedDate || toDateKey(cursor.y, cursor.m, new Date().getDate()), extras: { ...emptyExtras } });
+    setFormData({ ...emptyRes, id: null, byHours: !!byHours, date: dateKey || selectedDate || toDateKey(cursor.y, cursor.m, new Date().getDate()), extras: { ...emptyExtras } });
     setShowForm(true);
   };
   const openEditForm = (r) => {
@@ -1082,9 +1128,11 @@ function AgendaWilcoa() {
                     <div>
                       <div style={styles.dayPanelDate}>{fmtDateHuman(selectedDate)}</div>
                     </div>
-                    {canCreateEdit(role) && (
+                    {canCreateEdit(role) && ((resByDate[selectedDate] || []).length === 0 ? (
                       <button style={styles.smallAddBtn} onClick={() => openNewForm(selectedDate)}><Icon name="Plus" size={14} color="#fff" /> Reservar</button>
-                    )}
+                    ) : (
+                      <button style={styles.hoursAddBtn} title="Este día ya tiene una reserva. Puedes agregar otra solo si es por horas y no se cruza." onClick={() => openNewForm(selectedDate, true)}><Icon name="Clock" size={14} color="#fff" /> Reservar por horas</button>
+                    ))}
                   </div>
                   {(resByDate[selectedDate] || []).length === 0 ? (
                     <div style={styles.emptyDay}>
@@ -1196,6 +1244,7 @@ function AgendaWilcoa() {
           saving={saving}
           clients={clients}
           priceList={config.priceList}
+          reservations={reservations}
           onCancel={() => setShowForm(false)}
           onSave={async (d) => { const ok = await saveReservation(d); if (ok) setShowForm(false); }}
         />
@@ -1375,7 +1424,7 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, onPhotos, showDate,
         <div style={{ minWidth: 0 }}>
           <div style={styles.resClient}><Icon name="User" size={14} color="#0B1F5C" /> {r.clientName || 'Sin nombre'}</div>
           {showDate && <div style={styles.resDateSmall}><Icon name="Calendar" size={12} color="#8FA3C9" /> {fmtDateHuman(r.date)}</div>}
-          {timeRange && <div style={styles.resDateSmall}><Icon name="Clock" size={12} color="#8FA3C9" /> {timeRange}</div>}
+          {timeRange && <div style={styles.resDateSmall}><Icon name="Clock" size={12} color="#8FA3C9" /> {timeRange}{r.byHours && <span style={styles.byHoursTag}>Por horas</span>}</div>}
           {r.phone && <div style={styles.resDateSmall}><PhoneLink phone={r.phone} message={`Hola ${r.clientName || ''}, le saludamos por su reserva del salón${r.date ? ' para el ' + fmtDateHuman(r.date) : ''}. `} /></div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1593,7 +1642,7 @@ function PriceListPanel({ priceList, role, onSave, saving }) {
   );
 }
 
-function ReservationForm({ data, onCancel, onSave, saving, clients, priceList }) {
+function ReservationForm({ data, onCancel, onSave, saving, clients, priceList, reservations = [] }) {
   const [d, setD] = useState(data);
   const [submitting, setSubmitting] = useState(false);
   const [newItemName, setNewItemName] = useState('');
@@ -1727,7 +1776,11 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
   };
   const menajeExtrasTotal = extrasSubtotal(d);
 
-  const canSave = d.date && d.clientName.trim().length > 0 && (!d.isExempt || d.exemptReason.trim().length > 0);
+  // Choque con otra reserva del mismo día (ver findDayConflict)
+  const previousRes = d.id ? reservations.find(r => r.id === d.id) : null;
+  const dayConflict = findDayConflict(reservations, d, previousRes);
+
+  const canSave = d.date && !dayConflict && d.clientName.trim().length > 0 && (!d.isExempt || d.exemptReason.trim().length > 0);
 
   const handleSave = async () => {
     if (submitting || !canSave) return;
@@ -1746,9 +1799,28 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList })
           <button style={styles.closeBtn} onClick={safeCancel} disabled={submitting}><Icon name="X" size={18} color="#5C6D93" /></button>
         </div>
 
+        <label style={{ ...styles.checkboxRow, background: d.byHours ? 'rgba(71,195,239,0.14)' : 'transparent', padding: '9px 10px', borderRadius: 10, margin: '0 0 12px', alignItems: 'flex-start' }}>
+          <input type="checkbox" checked={!!d.byHours} onChange={e => set({ byHours: e.target.checked })} style={{ marginTop: 2 }} />
+          <span>
+            <strong>Reserva por horas</strong> — permite compartir el día con otras reservas en horarios distintos.
+            {d.byHours && <span style={{ display: 'block', fontSize: 12, color: '#5C6D93', marginTop: 2 }}>Indica hora de inicio y fin; no pueden cruzarse con otra reserva de ese día.</span>}
+          </span>
+        </label>
+
         <div className="wilcoa-form-grid" style={styles.formGrid}>
           <Field label="Fecha del evento">
-            <input type="date" value={d.date} onChange={e => set({ date: e.target.value })} style={styles.input} />
+            <input
+              type="date"
+              value={d.date}
+              onChange={e => set({ date: e.target.value })}
+              style={{ ...styles.input, ...(dayConflict ? styles.inputError : {}) }}
+            />
+            {dayConflict && (
+              <div style={styles.dayTakenWarn} role="alert">
+                <Icon name="X" size={13} color="#B42318" />
+                <span>{dayConflict.message}</span>
+              </div>
+            )}
           </Field>
           <Field label="Nombre del cliente">
             <input
@@ -2822,6 +2894,11 @@ const styles = {
   smallAddBtn: { display: 'flex', alignItems: 'center', gap: 5, background: '#1B8A3E', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 6px 14px rgba(27,138,62,0.35)', whiteSpace: 'nowrap' },
 
   emptyDay: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', padding: '30px 10px' },
+  hoursAddBtn: { display: 'flex', alignItems: 'center', gap: 5, background: '#0B1F5C', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 6px 14px rgba(11,31,92,0.3)', whiteSpace: 'nowrap' },
+  byHoursTag: { marginLeft: 6, background: 'rgba(71,195,239,0.2)', color: '#0B1F5C', borderRadius: 6, padding: '1px 6px', fontSize: 10.5, fontWeight: 700 },
+  inputError: { borderColor: '#E23B3B', background: '#FFF5F5' },
+  dayTakenWarn: { display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 6, padding: '8px 10px', background: '#FEECEC', border: '1px solid #F5B5B5', borderRadius: 10, color: '#B42318', fontSize: 12.5, lineHeight: 1.35, fontWeight: 600 },
+  dayTakenBadge: { display: 'inline-flex', alignItems: 'center', background: '#FEECEC', color: '#B42318', border: '1px solid #F5B5B5', borderRadius: 10, padding: '7px 12px', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' },
   emptyDayText: { color: '#8FA3C9', fontSize: 13.5, margin: 0, maxWidth: 220 },
 
   resStack: { display: 'flex', flexDirection: 'column', gap: 12 },
