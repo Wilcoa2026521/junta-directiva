@@ -143,7 +143,7 @@
   #root { max-width: 100%; overflow-x: hidden; }
 </style>
 </head>
-  <body> <div id="root"></div> <script type="text/babel" data-presets="react"> const { useState, useEffect, useRef, useMemo } = React; /* ============= ICONOS (SVG propios, reemplazan lucide-react) ============= */ const ICONS = {
+  <body> <div id="root"></div> <script>window.APP_VERSION = '2026-10-04-r4';</script> <script type="text/babel" data-presets="react"> const { useState, useEffect, useRef, useMemo } = React; /* ============= ICONOS (SVG propios, reemplazan lucide-react) ============= */ const ICONS = {
   Calendar: () => <>
     <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
     <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
@@ -753,7 +753,9 @@ function AgendaWilcoa() {
   const saveReservation = async (formValues) => {
     // Los campos de recurrencia son solo del formulario: no se guardan dentro de cada reserva.
     const { recurring, recurEvery, recurUntil, ...data } = formValues;
-    const isSeries = !!recurring && !data.id;
+    const isSeries = !!recurring;
+    // Si no se tocó "Hasta el", la fecha final por defecto es el 31 de diciembre del año de la reserva.
+    const untilResolved = recurUntil || (data.date ? data.date.slice(0, 4) + '-12-31' : '');
     const name = (data.clientName || '').trim();
     const phone = (data.phone || '').trim();
     let seriesInfo = null;
@@ -769,25 +771,26 @@ function AgendaWilcoa() {
         throw err;
       }
       let nextRes;
-      if (data.id) {
-        nextRes = cur.reservations.map(r => r.id === data.id ? data : r);
-      } else if (isSeries) {
-        // Serie recurrente: una reserva por cada fecha. Las fechas que ya estén ocupadas
+      if (isSeries) {
+        // Serie recurrente: una reserva por cada fecha. Si se está editando una reserva existente, esa
+        // se conserva (con sus datos) y solo se agregan las siguientes. Las fechas ya ocupadas
         // (según lo más reciente del servidor) se omiten y se avisan al terminar.
-        const seriesId = 's_' + uid();
-        const dates = buildRecurrenceDates(data.date, recurUntil, recurEvery);
-        const created = [];
+        const seriesId = (previous && previous.seriesId) || data.seriesId || ('s_' + uid());
+        const dates = buildRecurrenceDates(data.date, untilResolved, recurEvery);
+        const first = data.id ? { ...data, seriesId } : { ...data, id: uid(), seriesId };
+        const others = cur.reservations.filter(r => r.id !== first.id);
+        const created = [first];
         const skipped = [];
-        dates.forEach((dt, i) => {
-          const candidate = { ...data, id: uid(), date: dt };
-          if (i > 0 && findDayConflict([...cur.reservations, ...created], candidate, null)) { skipped.push(dt); return; }
-          // Solo la primera conserva lo ya abonado; las demás empiezan sin abonos, daños ni checklist.
-          created.push(i === 0
-            ? { ...candidate, seriesId }
-            : { ...candidate, seriesId, paidAmount: '0', damageItems: [], depositReturn: '0', checklist: null });
+        dates.slice(1).forEach(dt => {
+          // Las copias empiezan sin abonos, daños ni checklist; lo ya abonado queda en la primera.
+          const candidate = { ...data, id: uid(), date: dt, seriesId, paidAmount: '0', damageItems: [], depositReturn: '0', checklist: null };
+          if (findDayConflict([...others, ...created], candidate, null)) { skipped.push(dt); return; }
+          created.push(candidate);
         });
-        seriesInfo = { created: created.length, skipped };
-        nextRes = [...cur.reservations, ...created];
+        seriesInfo = { added: created.length - (data.id ? 1 : 0), skipped, edited: !!data.id };
+        nextRes = [...others, ...created];
+      } else if (data.id) {
+        nextRes = cur.reservations.map(r => r.id === data.id ? data : r);
       } else {
         nextRes = [...cur.reservations, { ...data, id: uid() }];
       }
@@ -815,7 +818,7 @@ function AgendaWilcoa() {
       if (seriesInfo) {
         const n = seriesInfo.skipped.length;
         showToast(
-          `Se crearon ${seriesInfo.created} reservas recurrentes` + (n ? `. Se omitieron ${n} fecha${n === 1 ? '' : 's'} ya ocupada${n === 1 ? '' : 's'}.` : '.'),
+          (seriesInfo.edited ? `Se agregaron ${seriesInfo.added} reservas más a la serie` : `Se crearon ${seriesInfo.added} reservas recurrentes`) + (n ? `. Se omitieron ${n} fecha${n === 1 ? '' : 's'} ya ocupada${n === 1 ? '' : 's'}.` : '.'),
           'ok', n ? 6000 : 3500
         );
       } else {
@@ -1049,6 +1052,7 @@ function AgendaWilcoa() {
             <div style={styles.brandRow}>
               <Icon name="Sparkles" size={14} color="#47C3EF" />
               <span style={styles.brandLabel}>AGENDA WILCOA</span>
+              <span style={styles.versionTag} title="Versión de la app cargada en este dispositivo">v{window.APP_VERSION}</span>
             </div>
             {editingHallName ? (
               <input
@@ -1485,7 +1489,7 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, onPhotos, showDate,
         <div style={{ minWidth: 0 }}>
           <div style={styles.resClient}><Icon name="User" size={14} color="#0B1F5C" /> {r.clientName || 'Sin nombre'}</div>
           {showDate && <div style={styles.resDateSmall}><Icon name="Calendar" size={12} color="#8FA3C9" /> {fmtDateHuman(r.date)}</div>}
-          {(timeRange || r.seriesId) && <div style={styles.resDateSmall}>{timeRange && <Icon name="Clock" size={12} color="#8FA3C9" />} {timeRange}{r.byHours && <span style={styles.byHoursTag}>Por horas</span>}{r.seriesId && <span style={styles.byHoursTag}>Recurrente</span>}</div>}
+          {(timeRange || r.seriesId) && <div style={{ ...styles.resDateSmall, flexWrap: 'wrap', rowGap: 4 }}>{timeRange && <Icon name="Clock" size={12} color="#8FA3C9" />} <span style={{ whiteSpace: 'nowrap' }}>{timeRange}</span>{r.byHours && <span style={styles.byHoursTag}>Por horas</span>}{r.seriesId && <span style={styles.byHoursTag}>Recurrente</span>}</div>}
           {r.phone && <div style={styles.resDateSmall}><PhoneLink phone={r.phone} message={`Hola ${r.clientName || ''}, le saludamos por su reserva del salón${r.date ? ' para el ' + fmtDateHuman(r.date) : ''}. `} /></div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1843,13 +1847,14 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList, r
 
   // Reserva recurrente (solo al crear): fechas que se generarían y cuáles se omitirían por estar ocupadas
   const recurUntilEff = d.recurUntil || (d.date ? d.date.slice(0, 4) + '-12-31' : '');
-  const recurOn = !!d.recurring && !d.id;
+  const recurOn = !!d.recurring;
   const recurDates = recurOn ? buildRecurrenceDates(d.date, recurUntilEff, d.recurEvery) : [];
   const recurSkipped = recurOn
     ? recurDates.filter((dt, i) => i > 0 && findDayConflict(reservations, { ...d, id: null, date: dt }, null))
     : [];
-  const recurInvalid = recurOn && (!d.date || !recurUntilEff || recurUntilEff < d.date);
+  const recurInvalid = recurOn && (!d.date || !recurUntilEff || recurDates.length < 2);
   const recurCount = recurDates.length - recurSkipped.length;
+  const recurNew = d.id ? recurCount - 1 : recurCount; // al editar, la reserva actual ya existe
 
   const canSave = d.date && !dayConflict && !recurInvalid && d.clientName.trim().length > 0 && (!d.isExempt || d.exemptReason.trim().length > 0);
 
@@ -1878,12 +1883,17 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList, r
           </span>
         </label>
 
-        {!d.id && (
+        {(
           <div style={{ marginBottom: 12 }}>
             <label style={{ ...styles.checkboxRow, background: d.recurring ? 'rgba(27,138,62,0.1)' : 'transparent', padding: '9px 10px', borderRadius: 10, margin: 0, alignItems: 'flex-start' }}>
-              <input type="checkbox" checked={!!d.recurring} onChange={e => set({ recurring: e.target.checked })} style={{ marginTop: 2 }} />
+              <input
+                type="checkbox"
+                checked={!!d.recurring}
+                onChange={e => set({ recurring: e.target.checked, recurUntil: (e.target.checked && !d.recurUntil && d.date) ? d.date.slice(0, 4) + '-12-31' : d.recurUntil })}
+                style={{ marginTop: 2 }}
+              />
               <span>
-                <strong>Reserva recurrente</strong> — repetir el mismo día de la semana (ej: todos los miércoles) y dejar todas las fechas reservadas de una vez.
+                <strong>{d.id ? 'Repetir esta reserva' : 'Reserva recurrente'}</strong> — {d.id ? 'crea copias en las siguientes fechas' : 'repetir el mismo día de la semana'} (ej: todos los miércoles) y dejar todas las fechas reservadas de una vez.
               </span>
             </label>
             {d.recurring && (
@@ -1903,10 +1913,10 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList, r
                 {!d.date ? (
                   <div style={styles.recurHint}>Elige primero la fecha del evento (será la primera de la serie).</div>
                 ) : recurInvalid ? (
-                  <div style={styles.dayTakenWarn} role="alert"><Icon name="X" size={13} color="#B42318" /><span>La fecha final debe ser posterior a la fecha del evento.</span></div>
+                  <div style={styles.dayTakenWarn} role="alert"><Icon name="X" size={13} color="#B42318" /><span>Con esas fechas no se repetiría ninguna vez. Elige una fecha final posterior, al menos una {d.recurEvery === '1' ? 'semana' : d.recurEvery + ' semanas'} después de la fecha del evento.</span></div>
                 ) : (
                   <div style={styles.recurHint}>
-                    Se crearán <strong>{recurCount}</strong> reserva{recurCount === 1 ? '' : 's'}, todos los {parseDateKey(d.date).toLocaleDateString('es-CR', { weekday: 'long' })}
+                    {d.id ? <>Se mantiene esta reserva y se agregarán <strong>{recurNew}</strong> más</> : <>Se crearán <strong>{recurCount}</strong> reserva{recurCount === 1 ? '' : 's'}</>}, todos los {parseDateKey(d.date).toLocaleDateString('es-CR', { weekday: 'long' })}
                     {' '}desde el {fmtDateHuman(d.date)} hasta el {fmtDateHuman(recurDates[recurDates.length - 1] || d.date)}.
                     {recurDates.length >= MAX_RECURRENCES && ' (Máximo permitido por serie.)'}
                     {recurSkipped.length > 0 && (
@@ -1915,6 +1925,7 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList, r
                       </div>
                     )}
                     <div style={{ marginTop: 6 }}>El monto, depósito, menaje y horario se copian a cada fecha; los abonos solo quedan en la primera.</div>
+                    <div style={{ marginTop: 4 }}>Las reservas se crean al tocar <strong>Guardar</strong>.</div>
                   </div>
                 )}
               </div>
@@ -2204,7 +2215,7 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList, r
             disabled={!canSave || submitting}
             onClick={handleSave}
           >
-            <Icon name="Save" size={15} color="#fff" /> {submitting ? 'Guardando…' : 'Guardar reserva'}
+            <Icon name="Save" size={15} color="#fff" /> {submitting ? 'Guardando…' : (recurOn && !recurInvalid ? (d.id ? `Guardar y agregar ${recurNew} más` : `Guardar ${recurCount} reservas`) : 'Guardar reserva')}
           </button>
         </div>
         {submitting && (
@@ -2963,6 +2974,7 @@ const styles = {
   logoImg: { width: '100%', height: '100%', objectFit: 'cover' },
   logoEditBadge: { position: 'absolute', bottom: -3, right: -3, width: 20, height: 20, borderRadius: '50%', background: '#47C3EF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', boxShadow: '0 3px 8px rgba(0,0,0,0.4)' },
   brandRow: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 },
+  versionTag: { fontSize: 10, color: 'rgba(255,255,255,0.45)', fontWeight: 600, marginLeft: 6, letterSpacing: 0.3 },
   brandLabel: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 11, letterSpacing: 2.5, color: '#47C3EF', fontWeight: 600 },
   hallName: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, color: '#fff', margin: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', fontWeight: 600 },
   hallNameInput: { fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 600, background: 'rgba(255,255,255,0.1)', border: '1px solid #47C3EF', borderRadius: 8, color: '#fff', padding: '4px 10px' },
@@ -3012,7 +3024,7 @@ const styles = {
   recurBox: { background: 'rgba(27,138,62,0.06)', border: '1px solid rgba(27,138,62,0.25)', borderRadius: 12, padding: '12px 12px 10px', marginTop: 8 },
   recurHint: { fontSize: 12.5, color: '#213157', lineHeight: 1.45, marginTop: 4 },
   hoursAddBtn: { display: 'flex', alignItems: 'center', gap: 5, background: '#0B1F5C', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 6px 14px rgba(11,31,92,0.3)', whiteSpace: 'nowrap' },
-  byHoursTag: { marginLeft: 6, background: 'rgba(71,195,239,0.2)', color: '#0B1F5C', borderRadius: 6, padding: '1px 6px', fontSize: 10.5, fontWeight: 700 },
+  byHoursTag: { whiteSpace: 'nowrap', marginLeft: 6, background: 'rgba(71,195,239,0.2)', color: '#0B1F5C', borderRadius: 6, padding: '1px 6px', fontSize: 10.5, fontWeight: 700 },
   inputError: { borderColor: '#E23B3B', background: '#FFF5F5' },
   dayTakenWarn: { display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 6, padding: '8px 10px', background: '#FEECEC', border: '1px solid #F5B5B5', borderRadius: 10, color: '#B42318', fontSize: 12.5, lineHeight: 1.35, fontWeight: 600 },
   dayTakenBadge: { display: 'inline-flex', alignItems: 'center', background: '#FEECEC', color: '#B42318', border: '1px solid #F5B5B5', borderRadius: 10, padding: '7px 12px', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' },
@@ -3179,6 +3191,31 @@ if ('serviceWorker' in navigator) {
   });
   navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => reg.update()).catch(() => {});
 }
+// Si en el servidor ya hay una versión más nueva de esta página que la que se está mostrando (por ejemplo
+// porque el caché del celular/computadora guardó la anterior), limpia el caché y recarga UNA vez.
+(function checkForNewVersion() {
+  try {
+    if (!navigator.onLine || !window.APP_VERSION) return;
+    fetch(location.pathname + '?vcheck=' + Date.now(), { cache: 'no-store' })
+      .then(r => r.text())
+      .then(async (html) => {
+        const m = html.match(/window\.APP_VERSION\s*=\s*'([^']+)'/);
+        if (!m || m[1] === window.APP_VERSION) return;
+        if (sessionStorage.getItem('wilcoa_vreload') === m[1]) return; // evita bucles de recarga
+        sessionStorage.setItem('wilcoa_vreload', m[1]);
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(r => r.unregister()));
+        }
+        if (window.caches) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+        }
+        location.reload();
+      })
+      .catch(() => {});
+  } catch (e) {}
+})();
 </script>
 </body>
 </html>
