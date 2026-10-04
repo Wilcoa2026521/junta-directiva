@@ -311,7 +311,24 @@ const defaultConfig = {
 // Se precarga en cada reserva nueva pero queda editable por si hay que reajustarlo.
 const DEFAULT_DEPOSIT = '20000';
 
-const emptyRes = { id: null, date: '', startTime: '', endTime: '', byHours: false, clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: DEFAULT_DEPOSIT, damageItems: [], depositReturn: '0', isExempt: false, exemptReason: '', exemptRefValue: '', voluntaryFee: '', extras: { ...emptyExtras, otrosItems: [] }, notes: '', checklist: null };
+const emptyRes = { id: null, date: '', startTime: '', endTime: '', byHours: false, recurring: false, recurEvery: '1', recurUntil: '', clientName: '', phone: '', totalAmount: '', paidAmount: '', depositAmount: DEFAULT_DEPOSIT, damageItems: [], depositReturn: '0', isExempt: false, exemptReason: '', exemptRefValue: '', voluntaryFee: '', extras: { ...emptyExtras, otrosItems: [] }, notes: '', checklist: null };
+
+/* ============ RESERVAS RECURRENTES ============ */
+const MAX_RECURRENCES = 104; // tope de seguridad (2 años semanales)
+// Fechas (AAAA-MM-DD) desde "startKey" hasta "untilKey", cada "everyWeeks" semanas (mismo día de la semana).
+function buildRecurrenceDates(startKey, untilKey, everyWeeks) {
+  if (!startKey) return [];
+  const step = Math.max(1, Number(everyWeeks) || 1) * 7;
+  const start = parseDateKey(startKey);
+  const end = untilKey ? parseDateKey(untilKey) : start;
+  const out = [];
+  for (let i = 0; i < MAX_RECURRENCES; i++) {
+    const dt = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i * step);
+    if (dt > end) break;
+    out.push(toDateKey(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+  }
+  return out;
+}
 
 /* ============ REGLA: UNA RESERVA POR DÍA (con excepción "por horas") ============ */
 // Devuelve null si la reserva se puede guardar, o { message } si choca con otra.
@@ -718,9 +735,9 @@ function AgendaWilcoa() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [saving]);
 
-  const showToast = (msg, kind = 'ok') => {
+  const showToast = (msg, kind = 'ok', ms = 2600) => {
     setToast({ msg, kind });
-    setTimeout(() => setToast(null), 2600);
+    setTimeout(() => setToast(null), ms);
   };
 
   const updateConfig = async (patch) => {
@@ -733,9 +750,13 @@ function AgendaWilcoa() {
     return !!result;
   };
 
-  const saveReservation = async (data) => {
+  const saveReservation = async (formValues) => {
+    // Los campos de recurrencia son solo del formulario: no se guardan dentro de cada reserva.
+    const { recurring, recurEvery, recurUntil, ...data } = formValues;
+    const isSeries = !!recurring && !data.id;
     const name = (data.clientName || '').trim();
     const phone = (data.phone || '').trim();
+    let seriesInfo = null;
 
     const result = await persistPatch(cur => {
       // Una reserva por día (salvo "Reserva por horas" sin cruces de horario). Se revisa contra la
@@ -750,6 +771,23 @@ function AgendaWilcoa() {
       let nextRes;
       if (data.id) {
         nextRes = cur.reservations.map(r => r.id === data.id ? data : r);
+      } else if (isSeries) {
+        // Serie recurrente: una reserva por cada fecha. Las fechas que ya estén ocupadas
+        // (según lo más reciente del servidor) se omiten y se avisan al terminar.
+        const seriesId = 's_' + uid();
+        const dates = buildRecurrenceDates(data.date, recurUntil, recurEvery);
+        const created = [];
+        const skipped = [];
+        dates.forEach((dt, i) => {
+          const candidate = { ...data, id: uid(), date: dt };
+          if (i > 0 && findDayConflict([...cur.reservations, ...created], candidate, null)) { skipped.push(dt); return; }
+          // Solo la primera conserva lo ya abonado; las demás empiezan sin abonos, daños ni checklist.
+          created.push(i === 0
+            ? { ...candidate, seriesId }
+            : { ...candidate, seriesId, paidAmount: '0', damageItems: [], depositReturn: '0', checklist: null });
+        });
+        seriesInfo = { created: created.length, skipped };
+        nextRes = [...cur.reservations, ...created];
       } else {
         nextRes = [...cur.reservations, { ...data, id: uid() }];
       }
@@ -774,17 +812,40 @@ function AgendaWilcoa() {
       setReservations(result.reservations);
       setClients(result.clients);
       setConfig(result.config);
-      showToast(data.id ? 'Reserva actualizada' : 'Reserva agregada');
+      if (seriesInfo) {
+        const n = seriesInfo.skipped.length;
+        showToast(
+          `Se crearon ${seriesInfo.created} reservas recurrentes` + (n ? `. Se omitieron ${n} fecha${n === 1 ? '' : 's'} ya ocupada${n === 1 ? '' : 's'}.` : '.'),
+          'ok', n ? 6000 : 3500
+        );
+      } else {
+        showToast(data.id ? 'Reserva actualizada' : 'Reserva agregada');
+      }
     }
     return !!result;
   };
 
   const deleteReservation = async (id) => {
     if (!canDelete(role)) return false;
-    const result = await persistPatch(cur => ({ ...cur, reservations: cur.reservations.filter(r => r.id !== id) }));
+    // Si es parte de una serie recurrente, se puede eliminar solo esta o también las siguientes.
+    let idsToDelete = [id];
+    const target = reservations.find(r => r.id === id);
+    if (target && target.seriesId) {
+      const fromHere = reservations.filter(r => r.seriesId === target.seriesId && r.date >= target.date);
+      if (fromHere.length > 1) {
+        if (window.confirm('Esta reserva es parte de una serie recurrente.\n\n¿Eliminar SOLO esta reserva?\n\nAceptar = solo esta\nCancelar = ver más opciones')) {
+          idsToDelete = [id];
+        } else if (window.confirm('¿Eliminar esta reserva y las ' + (fromHere.length - 1) + ' siguientes de la serie? No se puede deshacer.')) {
+          idsToDelete = fromHere.map(r => r.id);
+        } else {
+          return false;
+        }
+      }
+    }
+    const result = await persistPatch(cur => ({ ...cur, reservations: cur.reservations.filter(r => !idsToDelete.includes(r.id)) }));
     if (result) {
       setReservations(result.reservations);
-      showToast('Reserva eliminada', 'ok');
+      showToast(idsToDelete.length > 1 ? idsToDelete.length + ' reservas eliminadas' : 'Reserva eliminada', 'ok');
     }
     return !!result;
   };
@@ -1424,7 +1485,7 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, onPhotos, showDate,
         <div style={{ minWidth: 0 }}>
           <div style={styles.resClient}><Icon name="User" size={14} color="#0B1F5C" /> {r.clientName || 'Sin nombre'}</div>
           {showDate && <div style={styles.resDateSmall}><Icon name="Calendar" size={12} color="#8FA3C9" /> {fmtDateHuman(r.date)}</div>}
-          {timeRange && <div style={styles.resDateSmall}><Icon name="Clock" size={12} color="#8FA3C9" /> {timeRange}{r.byHours && <span style={styles.byHoursTag}>Por horas</span>}</div>}
+          {(timeRange || r.seriesId) && <div style={styles.resDateSmall}>{timeRange && <Icon name="Clock" size={12} color="#8FA3C9" />} {timeRange}{r.byHours && <span style={styles.byHoursTag}>Por horas</span>}{r.seriesId && <span style={styles.byHoursTag}>Recurrente</span>}</div>}
           {r.phone && <div style={styles.resDateSmall}><PhoneLink phone={r.phone} message={`Hola ${r.clientName || ''}, le saludamos por su reserva del salón${r.date ? ' para el ' + fmtDateHuman(r.date) : ''}. `} /></div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1780,7 +1841,17 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList, r
   const previousRes = d.id ? reservations.find(r => r.id === d.id) : null;
   const dayConflict = findDayConflict(reservations, d, previousRes);
 
-  const canSave = d.date && !dayConflict && d.clientName.trim().length > 0 && (!d.isExempt || d.exemptReason.trim().length > 0);
+  // Reserva recurrente (solo al crear): fechas que se generarían y cuáles se omitirían por estar ocupadas
+  const recurUntilEff = d.recurUntil || (d.date ? d.date.slice(0, 4) + '-12-31' : '');
+  const recurOn = !!d.recurring && !d.id;
+  const recurDates = recurOn ? buildRecurrenceDates(d.date, recurUntilEff, d.recurEvery) : [];
+  const recurSkipped = recurOn
+    ? recurDates.filter((dt, i) => i > 0 && findDayConflict(reservations, { ...d, id: null, date: dt }, null))
+    : [];
+  const recurInvalid = recurOn && (!d.date || !recurUntilEff || recurUntilEff < d.date);
+  const recurCount = recurDates.length - recurSkipped.length;
+
+  const canSave = d.date && !dayConflict && !recurInvalid && d.clientName.trim().length > 0 && (!d.isExempt || d.exemptReason.trim().length > 0);
 
   const handleSave = async () => {
     if (submitting || !canSave) return;
@@ -1806,6 +1877,50 @@ function ReservationForm({ data, onCancel, onSave, saving, clients, priceList, r
             {d.byHours && <span style={{ display: 'block', fontSize: 12, color: '#5C6D93', marginTop: 2 }}>Indica hora de inicio y fin; no pueden cruzarse con otra reserva de ese día.</span>}
           </span>
         </label>
+
+        {!d.id && (
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ ...styles.checkboxRow, background: d.recurring ? 'rgba(27,138,62,0.1)' : 'transparent', padding: '9px 10px', borderRadius: 10, margin: 0, alignItems: 'flex-start' }}>
+              <input type="checkbox" checked={!!d.recurring} onChange={e => set({ recurring: e.target.checked })} style={{ marginTop: 2 }} />
+              <span>
+                <strong>Reserva recurrente</strong> — repetir el mismo día de la semana (ej: todos los miércoles) y dejar todas las fechas reservadas de una vez.
+              </span>
+            </label>
+            {d.recurring && (
+              <div style={styles.recurBox}>
+                <div className="wilcoa-form-grid" style={styles.formGrid}>
+                  <Field label="Se repite">
+                    <select value={d.recurEvery} onChange={e => set({ recurEvery: e.target.value })} style={styles.input}>
+                      <option value="1">Cada semana</option>
+                      <option value="2">Cada 2 semanas</option>
+                      <option value="4">Cada 4 semanas</option>
+                    </select>
+                  </Field>
+                  <Field label="Hasta el">
+                    <input type="date" value={recurUntilEff} min={d.date || undefined} onChange={e => set({ recurUntil: e.target.value })} style={styles.input} />
+                  </Field>
+                </div>
+                {!d.date ? (
+                  <div style={styles.recurHint}>Elige primero la fecha del evento (será la primera de la serie).</div>
+                ) : recurInvalid ? (
+                  <div style={styles.dayTakenWarn} role="alert"><Icon name="X" size={13} color="#B42318" /><span>La fecha final debe ser posterior a la fecha del evento.</span></div>
+                ) : (
+                  <div style={styles.recurHint}>
+                    Se crearán <strong>{recurCount}</strong> reserva{recurCount === 1 ? '' : 's'}, todos los {parseDateKey(d.date).toLocaleDateString('es-CR', { weekday: 'long' })}
+                    {' '}desde el {fmtDateHuman(d.date)} hasta el {fmtDateHuman(recurDates[recurDates.length - 1] || d.date)}.
+                    {recurDates.length >= MAX_RECURRENCES && ' (Máximo permitido por serie.)'}
+                    {recurSkipped.length > 0 && (
+                      <div style={{ marginTop: 6, color: '#B42318', fontWeight: 600 }}>
+                        Se omitirán {recurSkipped.length} fecha{recurSkipped.length === 1 ? '' : 's'} que ya {recurSkipped.length === 1 ? 'está ocupada' : 'están ocupadas'}: {recurSkipped.slice(0, 6).map(k => parseDateKey(k).toLocaleDateString('es-CR', { day: 'numeric', month: 'short' })).join(', ')}{recurSkipped.length > 6 ? '…' : ''}
+                      </div>
+                    )}
+                    <div style={{ marginTop: 6 }}>El monto, depósito, menaje y horario se copian a cada fecha; los abonos solo quedan en la primera.</div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="wilcoa-form-grid" style={styles.formGrid}>
           <Field label="Fecha del evento">
@@ -2894,6 +3009,8 @@ const styles = {
   smallAddBtn: { display: 'flex', alignItems: 'center', gap: 5, background: '#1B8A3E', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 6px 14px rgba(27,138,62,0.35)', whiteSpace: 'nowrap' },
 
   emptyDay: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, textAlign: 'center', padding: '30px 10px' },
+  recurBox: { background: 'rgba(27,138,62,0.06)', border: '1px solid rgba(27,138,62,0.25)', borderRadius: 12, padding: '12px 12px 10px', marginTop: 8 },
+  recurHint: { fontSize: 12.5, color: '#213157', lineHeight: 1.45, marginTop: 4 },
   hoursAddBtn: { display: 'flex', alignItems: 'center', gap: 5, background: '#0B1F5C', color: '#fff', border: 'none', borderRadius: 10, padding: '8px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 6px 14px rgba(11,31,92,0.3)', whiteSpace: 'nowrap' },
   byHoursTag: { marginLeft: 6, background: 'rgba(71,195,239,0.2)', color: '#0B1F5C', borderRadius: 6, padding: '1px 6px', fontSize: 10.5, fontWeight: 700 },
   inputError: { borderColor: '#E23B3B', background: '#FFF5F5' },
