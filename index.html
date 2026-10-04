@@ -1376,7 +1376,7 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, onPhotos, showDate,
           <div style={styles.resClient}><Icon name="User" size={14} color="#0B1F5C" /> {r.clientName || 'Sin nombre'}</div>
           {showDate && <div style={styles.resDateSmall}><Icon name="Calendar" size={12} color="#8FA3C9" /> {fmtDateHuman(r.date)}</div>}
           {timeRange && <div style={styles.resDateSmall}><Icon name="Clock" size={12} color="#8FA3C9" /> {timeRange}</div>}
-          {showDate && r.phone && <div style={styles.resDateSmall}><PhoneLink phone={r.phone} message={`Hola ${r.clientName || ''}, le saludamos por su reserva del salón${r.date ? ' para el ' + fmtDateHuman(r.date) : ''}. `} /></div>}
+          {r.phone && <div style={styles.resDateSmall}><PhoneLink phone={r.phone} message={`Hola ${r.clientName || ''}, le saludamos por su reserva del salón${r.date ? ' para el ' + fmtDateHuman(r.date) : ''}. `} /></div>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {hasDamage && (
@@ -1391,7 +1391,6 @@ function ReservationCard({ r, onEdit, onDelete, onChecklist, onPhotos, showDate,
 
       {open && (
         <div style={styles.resCardBody}>
-          {r.phone && <div style={styles.resPhone}><PhoneLink phone={r.phone} message={`Hola ${r.clientName || ''}, le saludamos por su reserva del salón${r.date ? ' para el ' + fmtDateHuman(r.date) : ''}. `} /></div>}
 
           {r.isExempt ? (
             <div style={styles.exemptBox}>
